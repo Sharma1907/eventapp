@@ -5,6 +5,7 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('panel/', include('apps.accounts.admin_urls')),
 
     # API routes
     path('api/v1/auth/', include('apps.accounts.urls')),
@@ -16,7 +17,4 @@ urlpatterns = [
     path('api/v1/checkins/', include('apps.checkins.urls')),
     path('api/v1/notifications/', include('apps.notifications.urls')),
     path('api/v1/leaderboard/', include('apps.leaderboard.urls')),
-
-    # Admin panel MVT routes
-    path('panel/', include('apps.accounts.admin_urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

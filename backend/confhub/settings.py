@@ -1,12 +1,15 @@
 from pathlib import Path
 from decouple import config
 from datetime import timedelta
+import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY')
-DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost').split(',')
+DEBUG = config('DEBUG', default=True, cast=bool)
+
+# Allow all hosts in development
+ALLOWED_HOSTS = ['*']
 
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -20,6 +23,7 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'channels',
 ]
@@ -44,6 +48,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
+    'confhub.middleware.DisableCSRFForAPI',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -70,7 +75,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'confhub.wsgi.application'
 ASGI_APPLICATION = 'confhub.asgi.application'
 
-# Database
+# Database - SQLite for development
 if config('USE_POSTGRES', default=False, cast=bool):
     DATABASES = {
         'default': {
@@ -90,9 +95,8 @@ else:
         }
     }
 
-# Cache + Channels
+# Cache
 REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
-
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
@@ -112,20 +116,20 @@ CHANNEL_LAYERS = {
 # Auth
 AUTH_USER_MODEL = 'accounts.User'
 
+AUTHENTICATION_BACKENDS = [
+    'apps.accounts.backends.EmailBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
      'OPTIONS': {'min_length': 8}},
-    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
 # JWT
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(
-        hours=config('JWT_ACCESS_TOKEN_LIFETIME_HOURS', default=1, cast=int)
-    ),
-    'REFRESH_TOKEN_LIFETIME': timedelta(
-        days=config('JWT_REFRESH_TOKEN_LIFETIME_DAYS', default=7, cast=int)
-    ),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
 }
@@ -142,12 +146,16 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
-# CORS
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:19000',
+# CORS - Allow everything in development
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
+# CSRF
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.app.github.dev',
     'http://localhost:8000',
+    'http://localhost:8081',
 ]
-CORS_ALLOW_ALL_ORIGINS = DEBUG
 
 # Static & Media
 STATIC_URL = '/static/'
@@ -161,3 +169,6 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
+
+LOGIN_URL = '/panel/login/'
+LOGIN_REDIRECT_URL = '/panel/'
