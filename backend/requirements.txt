@@ -1,0 +1,38 @@
+# Core
+django==4.2.9
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+
+# Auth
+djangorestframework-simplejwt==5.3.1
+
+# WebSocket
+channels==4.0.0
+channels-redis==4.1.0
+daphne==4.0.0
+
+# Async tasks
+celery==5.3.6
+redis==5.0.1
+
+# Database
+psycopg2-binary==2.9.9
+
+# File storage
+django-storages==1.14.2
+minio==7.2.3
+
+# Email
+django-anymail==10.2
+
+# Utilities
+pillow==10.2.0
+python-decouple==3.8
+pandas==2.2.0
+openpyxl==3.1.2
+qrcode==7.4.2
+PyJWT==2.8.0
+
+# Dev tools
+black==24.1.1
+isort==5.13.2

@@ -1,0 +1,43 @@
+{
+  "name": "ConfHub Dev",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [8000, 8001, 5432, 6379, 19000, 19001],
+  "portsAttributes": {
+    "8000": { "label": "Django API" },
+    "8001": { "label": "Daphne WebSocket" },
+    "5432": { "label": "PostgreSQL" },
+    "6379": { "label": "Redis" },
+    "19000": { "label": "Expo" },
+    "19001": { "label": "Expo DevTools" }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "ms-azuretools.vscode-docker",
+        "ckolkman.vscode-postgres",
+        "mtxr.sqltools"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        }
+      }
+    }
+  }
+}
