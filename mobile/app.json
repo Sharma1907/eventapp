@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "ETD 2026",
+    "slug": "etd2026",
+    "version": "1.0.0",
+    "sdkVersion": "51.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "owner": "coder2026",
+    "extra": {
+      "eas": {
+        "projectId": "afa28d7e-10d5-4e85-bed4-783b7371a56b"
+      }
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.etd2026.app"
+    },
+    "android": {
+      "package": "com.etd2026.app",
+      "googleServicesFile": "./google-services.json"
+    },
+    "scheme": "etd2026",
+    "plugins": ["expo-notifications"]
+  }
+}
