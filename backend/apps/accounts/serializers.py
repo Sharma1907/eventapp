@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
-from rest_framework_simplejwt.tokens import RefreshToken
 
 User = get_user_model()
 
@@ -30,12 +29,14 @@ class LoginSerializer(serializers.Serializer):
 
 class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
+    profile_photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'full_name',
-            'role', 'phone', 'affiliation', 'bio', 'profile_photo',
+            'role', 'phone', 'affiliation', 'bio', 'designation', 'gender',
+            'research_interests', 'profile_photo', 'profile_photo_url',
             'registration_id', 'must_change_password', 'profile_complete',
             'show_phone', 'show_linkedin', 'linkedin_url', 'created_at',
         ]
@@ -43,6 +44,14 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         return obj.get_full_name()
+
+    def get_profile_photo_url(self, obj):
+        if obj.profile_photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_photo.url)
+            return obj.profile_photo.url
+        return None
 
 
 class ChangePasswordSerializer(serializers.Serializer):

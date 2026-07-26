@@ -30,13 +30,14 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     'apps.accounts',
+    'apps.notifications',
     'apps.conferences',
     'apps.events',
     'apps.photos',
     'apps.polls',
     'apps.posts',
     'apps.checkins',
-    'apps.notifications',
+    
     'apps.leaderboard',
 ]
 
@@ -151,11 +152,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF
-CSRF_TRUSTED_ORIGINS = [
-    'https://*.app.github.dev',
-    'http://localhost:8000',
-    'http://localhost:8081',
-]
+CSRF_TRUSTED_ORIGINS = ['https://*.app.github.dev', 'http://localhost:8000', 'https://*.ngrok-free.app', 'https://*.ngrok-free.dev']
 
 # Static & Media
 STATIC_URL = '/static/'
@@ -172,3 +169,15 @@ USE_TZ = True
 
 LOGIN_URL = '/panel/login/'
 LOGIN_REDIRECT_URL = '/panel/'
+
+
+# ── Email (IITD SMTP) ──────────────────────────────────────────────────────
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST     = config('EMAIL_HOST', default='smtp.iitd.ac.in')
+EMAIL_PORT     = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS  = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_USE_SSL  = config('EMAIL_USE_SSL', default=False, cast=bool)
+EMAIL_HOST_USER     = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL  = config('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER)
+EMAIL_TIMEOUT  = 30

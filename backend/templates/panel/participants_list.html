@@ -1,0 +1,117 @@
+{% extends "panel/base.html" %}
+{% block title %}Participants — ETD 2026{% endblock %}
+{% block page_title %}Participants{% endblock %}
+{% block page_subtitle %}{{ total }} registered participant{{ total|pluralize }}{% endblock %}
+
+{% block content %}
+{% if messages %}
+  {% for m in messages %}
+    <div class="alert {% if 'error' in m.tags %}alert-error{% elif 'warning' in m.tags %}alert-warning{% else %}alert-success{% endif %}">
+      <i class="fas {% if 'error' in m.tags %}fa-circle-xmark{% elif 'warning' in m.tags %}fa-triangle-exclamation{% else %}fa-circle-check{% endif %}"></i>
+      {{ m }}
+    </div>
+  {% endfor %}
+{% endif %}
+
+<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <div class="stat-icon" style="background:var(--primary-light);color:var(--primary);">
+        <i class="fas fa-users"></i>
+      </div>
+    </div>
+    <div class="stat-value">{{ total }}</div>
+    <div class="stat-label">Total Participants</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <div class="stat-icon" style="background:var(--success-light);color:var(--success);">
+        <i class="fas fa-check-circle"></i>
+      </div>
+    </div>
+    <div class="stat-value">{{ password_set }}</div>
+    <div class="stat-label">Password Changed</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <div class="stat-icon" style="background:var(--warning-light);color:var(--warning);">
+        <i class="fas fa-clock"></i>
+      </div>
+    </div>
+    <div class="stat-value">{{ password_pending }}</div>
+    <div class="stat-label">Pending First Login</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>All Participants</h3>
+    <a href="{% url 'participants_upload' %}" class="btn btn-primary btn-sm">
+      <i class="fas fa-file-import"></i> Import More
+    </a>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Affiliation</th>
+            <th>Phone</th>
+            <th>Password</th>
+            <th>Joined</th>
+            <th style="width:90px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in participants %}
+          <tr>
+            <td style="font-weight:600;">{{ u.get_full_name }}</td>
+            <td>{{ u.email }}</td>
+            <td>{{ u.affiliation|default:"—" }}</td>
+            <td>{{ u.phone|default:"—" }}</td>
+            <td>
+              {% if u.must_change_password %}
+                <span class="badge badge-warning">Temp</span>
+              {% else %}
+                <span class="badge badge-success">Set</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px;color:var(--text-tertiary);">{{ u.created_at|date:"d M Y" }}</td>
+            <td>
+              <div style="display:flex;gap:6px;">
+                <a href="{% url 'participant_edit' u.pk %}" class="btn btn-secondary btn-sm" title="Edit" style="padding:5px 10px;">
+                  <i class="fas fa-pen-to-square"></i>
+                </a>
+                <form method="post" action="{% url 'participant_delete' u.pk %}" style="margin:0;">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm" title="Delete"
+                          style="padding:5px 10px;background:none;border:1px solid var(--danger);color:var(--danger);border-radius:8px;cursor:pointer;"
+                          onclick="return confirm('Delete {{ u.get_full_name }}?')">
+                    <i class="fas fa-trash-can"></i>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7">
+              <div class="empty-state">
+                <i class="fas fa-user-plus"></i>
+                <h3>No participants yet</h3>
+                <p>Import your first batch of participants.</p>
+                <a href="{% url 'participants_upload' %}" class="btn btn-primary btn-sm">
+                  <i class="fas fa-file-import"></i> Import Participants
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,3 +1,6 @@
+# Tell Make these are commands, not files
+.PHONY: up down logs migrate makemigrations runserver shell superuser celery mobile test-backend reset-db freeze format
+
 # ======================
 # CONFHUB MAKE COMMANDS
 # ======================

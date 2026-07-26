@@ -1,0 +1,101 @@
+{% extends "panel/base.html" %}
+{% block title %}Preview Import — ETD 2026{% endblock %}
+{% block page_title %}Review Import{% endblock %}
+{% block page_subtitle %}{{ total }} participant(s) staged — review before confirming{% endblock %}
+
+{% block content %}
+{% if messages %}
+  {% for m in messages %}
+    <div class="alert {% if 'error' in m.tags %}alert-error{% elif 'warning' in m.tags %}alert-warning{% else %}alert-success{% endif %}">
+      <i class="fas {% if 'error' in m.tags %}fa-circle-xmark{% elif 'warning' in m.tags %}fa-triangle-exclamation{% else %}fa-circle-check{% endif %}"></i>
+      {{ m }}
+    </div>
+  {% endfor %}
+{% endif %}
+
+{% if duplicates %}
+  <div class="alert alert-warning">
+    <i class="fas fa-triangle-exclamation"></i>
+    <strong>{{ duplicates }}</strong> email(s) already exist and will be skipped during import.
+  </div>
+{% endif %}
+
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>Staged Participants</h3>
+    <a href="{% url 'participants_upload' %}" class="card-header-action">
+      <i class="fas fa-arrow-left"></i> Upload Different File
+    </a>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Organisation</th>
+            <th>Mobile</th>
+            <th>Status</th>
+            <th style="width:60px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in rows %}
+          <tr>
+            <td style="font-weight:600;">
+              {% if item.obj.salutation %}{{ item.obj.salutation }} {% endif %}{{ item.obj.full_name }}
+            </td>
+            <td>{{ item.obj.email }}</td>
+            <td>{{ item.obj.organisation|default:"—" }}</td>
+            <td>{{ item.obj.mobile|default:"—" }}</td>
+            <td>
+              {% if item.duplicate %}
+                <span class="badge badge-warning">Duplicate</span>
+              {% else %}
+                <span class="badge badge-success">New</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" action="{% url 'participants_delete_row' item.obj.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:4px 8px;"
+                        title="Remove" onclick="return confirm('Remove {{ item.obj.email }}?')">
+                  <i class="fas fa-trash-can"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6">
+              <div class="empty-state">
+                <i class="fas fa-inbox"></i>
+                <h3>No rows staged</h3>
+                <p>Upload a CSV or Excel file first.</p>
+                <a href="{% url 'participants_upload' %}" class="btn btn-primary btn-sm">Upload File</a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% if rows %}
+<div style="display:flex;align-items:center;gap:16px;">
+  <form method="post" action="{% url 'participants_confirm' %}">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary"
+            onclick="return confirm('Create {{ total }} user account(s) and send credential emails?')">
+      <i class="fas fa-paper-plane"></i> Confirm &amp; Send Credentials
+    </button>
+  </form>
+  <span style="font-size:13px;color:var(--text-tertiary);">
+    This will create user accounts and email login credentials to each participant.
+  </span>
+</div>
+{% endif %}
+{% endblock %}

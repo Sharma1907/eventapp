@@ -1,2 +1,18 @@
 from django.urls import path
-urlpatterns = []
+from . import views
+
+urlpatterns = [
+    # Token management
+    path('register-token/',   views.register_token,      name='register_token'),
+    path('unregister-token/', views.unregister_token,    name='unregister_token'),
+
+    # Admin endpoints
+    path('send/',             views.send_notification,   name='send_notification'),
+    path('history/',          views.notification_history, name='notification_history'),
+
+    # App endpoints
+    path('my/',               views.my_notifications,    name='my_notifications'),
+    path('mark-read/',        views.mark_read,           name='mark_read'),
+    path('mark-all-read/',    views.mark_all_read,       name='mark_all_read'),
+    path('unread-count/',     views.unread_count,        name='unread_count'),
+]

@@ -1,0 +1,95 @@
+{% extends "panel/base.html" %}
+{% block title %}Import Participants — ETD 2026{% endblock %}
+{% block page_title %}Import Participants{% endblock %}
+{% block page_subtitle %}Upload CSV or Excel file with participant details{% endblock %}
+
+{% block content %}
+{% if messages %}
+  {% for m in messages %}
+    <div class="alert {% if 'error' in m.tags %}alert-error{% elif 'warning' in m.tags %}alert-warning{% else %}alert-success{% endif %}">
+      <i class="fas {% if 'error' in m.tags %}fa-circle-xmark{% elif 'warning' in m.tags %}fa-triangle-exclamation{% else %}fa-circle-check{% endif %}"></i>
+      {{ m }}
+    </div>
+  {% endfor %}
+{% endif %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px;">
+  <div class="card">
+    <div class="card-header">
+      <h3>Upload File</h3>
+      <a href="{% url 'participants_template' %}" class="card-header-action">
+        <i class="fas fa-download"></i> Download Template
+      </a>
+    </div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div style="margin-bottom:20px;">
+          <label class="form-label">Select CSV or Excel file</label>
+          <div id="drop-zone" style="border:2px dashed var(--border);border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--bg);position:relative;"
+               onclick="document.getElementById('file-input').click();">
+            <i class="fas fa-cloud-arrow-up" style="font-size:36px;color:var(--text-tertiary);display:block;margin-bottom:12px;"></i>
+            <p style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;font-weight:600;">
+              Click to browse or drag &amp; drop
+            </p>
+            <p style="font-size:12px;color:var(--text-tertiary);">Supports .csv and .xlsx</p>
+            <p id="file-name" style="font-size:13px;color:var(--primary);font-weight:600;margin-top:8px;"></p>
+          </div>
+          <input type="file" id="file-input" name="csv_file" accept=".csv,.xlsx" required
+                 style="display:none;"
+                 onchange="var n=this.files[0]?.name||'';document.getElementById('file-name').textContent=n;if(n){document.getElementById('drop-zone').style.borderColor='var(--primary)';document.getElementById('drop-zone').style.background='var(--primary-light)';}">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">
+          <i class="fas fa-upload"></i> Upload &amp; Preview
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div>
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header">
+        <h3>Required Columns</h3>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <span class="badge badge-info">Full Name *</span>
+          <span class="badge badge-info">Email ID *</span>
+          <span class="badge" style="background:var(--bg);color:var(--text-secondary);">Salutation</span>
+          <span class="badge" style="background:var(--bg);color:var(--text-secondary);">Gender</span>
+          <span class="badge" style="background:var(--bg);color:var(--text-secondary);">Designation</span>
+          <span class="badge" style="background:var(--bg);color:var(--text-secondary);">Organisation / Institute</span>
+          <span class="badge" style="background:var(--bg);color:var(--text-secondary);">Mobile Number</span>
+          <span class="badge" style="background:var(--bg);color:var(--text-secondary);">Address</span>
+          <span class="badge" style="background:var(--bg);color:var(--text-secondary);">PIN / Postal Code</span>
+        </div>
+        <p style="margin-top:14px;font-size:13px;color:var(--text-tertiary);">
+          Fields marked with <strong>*</strong> are mandatory. All others are optional.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>How it works</h3>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="width:28px;height:28px;border-radius:50%;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">1</div>
+            <div><h4 style="font-size:14px;font-weight:600;">Upload</h4><p style="font-size:13px;color:var(--text-tertiary);">Upload CSV/Excel with participant data</p></div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="width:28px;height:28px;border-radius:50%;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">2</div>
+            <div><h4 style="font-size:14px;font-weight:600;">Review</h4><p style="font-size:13px;color:var(--text-tertiary);">Check parsed rows, remove errors</p></div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="width:28px;height:28px;border-radius:50%;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">3</div>
+            <div><h4 style="font-size:14px;font-weight:600;">Confirm</h4><p style="font-size:13px;color:var(--text-tertiary);">Create accounts &amp; send login credentials via email</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

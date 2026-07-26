@@ -1,6 +1,7 @@
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
@@ -26,7 +27,7 @@ def login_view(request):
             'access': str(refresh.access_token),
             'refresh': str(refresh),
         },
-        'user': UserSerializer(user).data,
+        'user': UserSerializer(user, context={'request': request}).data,
     }, status=status.HTTP_200_OK)
 
 
@@ -35,7 +36,7 @@ def login_view(request):
 def me_view(request):
     return Response({
         'success': True,
-        'user': UserSerializer(request.user).data,
+        'user': UserSerializer(request.user, context={'request': request}).data,
     })
 
 
@@ -70,21 +71,55 @@ def change_password_view(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
 def update_profile_view(request):
     user = request.user
-    serializer = UserSerializer(user, data=request.data, partial=True)
+    was_complete = user.profile_complete
+
+    serializer = UserSerializer(user, data=request.data, partial=True, context={'request': request})
     serializer.is_valid(raise_exception=True)
     serializer.save()
 
-    if all([user.first_name, user.last_name, user.affiliation]):
-        user.profile_complete = True
-        user.save()
+    # Refresh from DB to get updated fields
+    user.refresh_from_db()
 
-    return Response({
+    # Check profile completion
+    is_now_complete = all([
+        user.first_name,
+        user.last_name,
+        user.affiliation,
+        user.bio or user.research_interests,
+    ])
+
+    points_awarded = 0
+
+    if is_now_complete and not was_complete:
+        user.profile_complete = True
+        user.save(update_fields=['profile_complete'])
+        # Award points for profile completion
+        try:
+            from apps.leaderboard.utils import award_points
+            from apps.leaderboard.models import PointAction, PointEntry
+            if not PointEntry.objects.filter(user=user, action=PointAction.PROFILE_COMPLETION).exists():
+                award_points(user, PointAction.PROFILE_COMPLETION, 'Profile completed')
+                points_awarded = 50
+        except Exception:
+            pass
+    elif not is_now_complete and was_complete:
+        user.profile_complete = False
+        user.save(update_fields=['profile_complete'])
+
+    response_data = {
         'success': True,
         'message': 'Profile updated.',
-        'user': UserSerializer(user).data,
-    })
+        'user': UserSerializer(user, context={'request': request}).data,
+    }
+
+    if points_awarded > 0:
+        response_data['points_awarded'] = points_awarded
+        response_data['points_message'] = f'🎉 +{points_awarded} points for completing your profile!'
+
+    return Response(response_data)
 
 
 @api_view(['POST'])

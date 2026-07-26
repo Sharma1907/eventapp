@@ -41,6 +41,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone               = models.CharField(max_length=20, blank=True)
     affiliation         = models.CharField(max_length=200, blank=True)
     bio                 = models.TextField(blank=True)
+    designation         = models.CharField(max_length=200, blank=True)
+    gender              = models.CharField(max_length=20, blank=True)
+    research_interests  = models.TextField(blank=True, help_text='Comma-separated research interests')
     profile_photo       = models.ImageField(upload_to='profiles/', blank=True, null=True)
     linkedin_url        = models.URLField(blank=True)
 
@@ -82,3 +85,38 @@ class UserFCMToken(models.Model):
     class Meta:
         db_table = 'user_fcm_tokens'
         unique_together = ['user', 'fcm_token']
+
+
+# ── Participant import staging table ───────────────────────────────────────
+class ParticipantImport(models.Model):
+    class Status(models.TextChoices):
+        PENDING  = 'pending',  'Pending'
+        IMPORTED = 'imported', 'Imported'   # user record created
+        FAILED   = 'failed',   'Failed'     # error during user creation
+
+    # Raw CSV fields (all optional at model level; validation at parse time)
+    salutation   = models.CharField(max_length=20, blank=True)
+    full_name    = models.CharField(max_length=200)
+    email        = models.EmailField()
+    gender       = models.CharField(max_length=20, blank=True)
+    designation  = models.CharField(max_length=200, blank=True)
+    organisation = models.CharField(max_length=200, blank=True)
+    mobile       = models.CharField(max_length=30, blank=True)
+    address      = models.TextField(blank=True)
+    pin_code     = models.CharField(max_length=20, blank=True)
+
+    # Housekeeping
+    status       = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    error_note   = models.CharField(max_length=500, blank=True)   # why it failed
+    uploaded_at  = models.DateTimeField(auto_now_add=True)
+    uploaded_by  = models.ForeignKey(
+        'accounts.User', on_delete=models.SET_NULL,
+        null=True, related_name='participant_imports'
+    )
+
+    class Meta:
+        db_table = 'participant_imports'
+        ordering = ['uploaded_at']
+
+    def __str__(self):
+        return f"{self.email} [{self.status}]"

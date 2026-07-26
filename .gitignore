@@ -39,3 +39,4 @@ mobile/dist/
 # OS
 .DS_Store
 Thumbs.db
+backend/credentials/firebase-service-account.json

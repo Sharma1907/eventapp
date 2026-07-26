@@ -1,0 +1,115 @@
+{% extends "panel/base.html" %}
+
+{% block title %}Notifications — ConfHub Admin{% endblock %}
+{% block page_title %}Push Notifications{% endblock %}
+{% block page_subtitle %}Send FCM notifications to conference attendees{% endblock %}
+
+{% block content %}
+<div style="display:flex; gap:24px; align-items:flex-start;">
+
+  <!-- Compose -->
+  <div style="flex:0 0 400px;">
+    <div class="card">
+      <div class="card-header">
+        <h3><i class="fas fa-paper-plane" style="color:var(--primary);margin-right:8px;"></i>Compose</h3>
+        <span style="font-size:12px;font-weight:600;padding:4px 10px;background:var(--primary-light);color:var(--primary);border-radius:20px;">
+          {{ device_count }} device{{ device_count|pluralize }}
+        </span>
+      </div>
+      <div class="card-body">
+        {% if messages %}
+          {% for m in messages %}
+            <div style="padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px;
+              {% if 'success' in m.tags %}background:#d1fae5;color:#065f46;{% else %}background:#fee2e2;color:#dc2626;{% endif %}">
+              {{ m }}
+            </div>
+          {% endfor %}
+        {% endif %}
+
+        <form method="POST" action="{% url 'panel_send_notification' %}">
+          {% csrf_token %}
+          <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;font-weight:600;color:#5f6368;margin-bottom:6px;">Title *</label>
+            <input type="text" name="title" required maxlength="100" placeholder="Notification title"
+              style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;outline:none;"
+              onfocus="this.style.borderColor='#1a73e8'" onblur="this.style.borderColor='#e1e5eb'">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;font-weight:600;color:#5f6368;margin-bottom:6px;">Message *</label>
+            <textarea name="body" required rows="3" placeholder="Message body..."
+              style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;outline:none;resize:vertical;"
+              onfocus="this.style.borderColor='#1a73e8'" onblur="this.style.borderColor='#e1e5eb'"></textarea>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;font-weight:600;color:#5f6368;margin-bottom:6px;">Send To</label>
+            <select name="target_type" onchange="document.getElementById('roleDiv').style.display=this.value==='role'?'block':'none';document.getElementById('userDiv').style.display=this.value==='user'?'block':'none';"
+              style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;background:#fff;">
+              <option value="all">📢 All Attendees</option>
+              <option value="role">👥 By Role</option>
+              <option value="user">👤 Specific User</option>
+            </select>
+          </div>
+          <div id="roleDiv" style="display:none;margin-bottom:14px;">
+            <select name="target_role" style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;">
+              <option value="participant">Participant</option>
+              <option value="speaker">Speaker</option>
+              <option value="organizer">Organizer</option>
+            </select>
+          </div>
+          <div id="userDiv" style="display:none;margin-bottom:14px;">
+            <input type="email" name="target_email" placeholder="user@example.com"
+              style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;">
+          </div>
+          <button type="submit" style="width:100%;padding:12px;background:#1a73e8;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
+            <i class="fas fa-paper-plane" style="margin-right:6px;"></i>Send
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div style="flex:1;">
+    <div class="card">
+      <div class="card-header">
+        <h3><i class="fas fa-history" style="color:#9aa0a6;margin-right:8px;"></i>Sent Notifications</h3>
+      </div>
+      {% if notifications %}
+        {% for n in notifications %}
+          <div style="padding:14px 20px;border-bottom:1px solid #f0f2f5;display:flex;gap:12px;">
+            <div style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+              {% if n.status == 'sent' %}background:#e6f9f1;{% else %}background:#fee2e2;{% endif %}">
+              <i class="fas fa-bell" style="font-size:14px;{% if n.status == 'sent' %}color:#0d9f6e;{% else %}color:#dc2626;{% endif %}"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <span style="font-size:14px;font-weight:600;color:#1a1d21;">{{ n.title|truncatechars:40 }}</span>
+                <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;
+                  {% if n.status == 'sent' %}background:#e6f9f1;color:#0d9f6e;{% else %}background:#fee2e2;color:#dc2626;{% endif %}">
+                  {{ n.status|upper }}
+                </span>
+              </div>
+              <div style="font-size:12px;color:#5f6368;margin-bottom:6px;">{{ n.body|truncatechars:60 }}</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <span style="font-size:10px;padding:2px 8px;background:#f0f2f5;color:#5f6368;border-radius:4px;">
+                  {% if n.target_type == 'all' %}📢 All{% elif n.target_type == 'role' %}👥 {{ n.target_role|capfirst }}{% else %}👤 User{% endif %}
+                </span>
+                <span style="font-size:10px;padding:2px 8px;background:#e6f9f1;color:#0d9f6e;border-radius:4px;">
+                  ✓ {{ n.sent_count }} sent
+                </span>
+                <span style="font-size:10px;padding:2px 8px;background:#e8f0fe;color:#1a73e8;border-radius:4px;">
+                  👁 {{ n.seen }} read
+                </span>
+                <span style="font-size:10px;color:#9aa0a6;margin-left:auto;">{{ n.created_at|timesince }} ago</span>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div style="padding:40px;text-align:center;color:#9aa0a6;">No notifications sent yet</div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
