@@ -1,115 +1,214 @@
 {% extends "panel/base.html" %}
-
-{% block title %}Notifications — ConfHub Admin{% endblock %}
+{% block title %}Notifications — ETD 2026{% endblock %}
 {% block page_title %}Push Notifications{% endblock %}
-{% block page_subtitle %}Send FCM notifications to conference attendees{% endblock %}
+{% block page_subtitle %}Send to all participants or specific roles{% endblock %}
 
 {% block content %}
-<div style="display:flex; gap:24px; align-items:flex-start;">
+{% for m in messages %}
+<div class="alert alert-{{ m.tags|default:'success' }}"><i class="fas fa-check-circle"></i> {{ m }}</div>
+{% endfor %}
 
-  <!-- Compose -->
-  <div style="flex:0 0 400px;">
-    <div class="card">
-      <div class="card-header">
-        <h3><i class="fas fa-paper-plane" style="color:var(--primary);margin-right:8px;"></i>Compose</h3>
-        <span style="font-size:12px;font-weight:600;padding:4px 10px;background:var(--primary-light);color:var(--primary);border-radius:20px;">
-          {{ device_count }} device{{ device_count|pluralize }}
-        </span>
-      </div>
-      <div class="card-body">
-        {% if messages %}
-          {% for m in messages %}
-            <div style="padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px;
-              {% if 'success' in m.tags %}background:#d1fae5;color:#065f46;{% else %}background:#fee2e2;color:#dc2626;{% endif %}">
-              {{ m }}
-            </div>
-          {% endfor %}
-        {% endif %}
+<div class="content-grid" style="grid-template-columns:1fr 420px; align-items:start;">
 
-        <form method="POST" action="{% url 'panel_send_notification' %}">
-          {% csrf_token %}
-          <div style="margin-bottom:14px;">
-            <label style="display:block;font-size:12px;font-weight:600;color:#5f6368;margin-bottom:6px;">Title *</label>
-            <input type="text" name="title" required maxlength="100" placeholder="Notification title"
-              style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;outline:none;"
-              onfocus="this.style.borderColor='#1a73e8'" onblur="this.style.borderColor='#e1e5eb'">
-          </div>
-          <div style="margin-bottom:14px;">
-            <label style="display:block;font-size:12px;font-weight:600;color:#5f6368;margin-bottom:6px;">Message *</label>
-            <textarea name="body" required rows="3" placeholder="Message body..."
-              style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;outline:none;resize:vertical;"
-              onfocus="this.style.borderColor='#1a73e8'" onblur="this.style.borderColor='#e1e5eb'"></textarea>
-          </div>
-          <div style="margin-bottom:14px;">
-            <label style="display:block;font-size:12px;font-weight:600;color:#5f6368;margin-bottom:6px;">Send To</label>
-            <select name="target_type" onchange="document.getElementById('roleDiv').style.display=this.value==='role'?'block':'none';document.getElementById('userDiv').style.display=this.value==='user'?'block':'none';"
-              style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;background:#fff;">
-              <option value="all">📢 All Attendees</option>
-              <option value="role">👥 By Role</option>
-              <option value="user">👤 Specific User</option>
-            </select>
-          </div>
-          <div id="roleDiv" style="display:none;margin-bottom:14px;">
-            <select name="target_role" style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;">
-              <option value="participant">Participant</option>
-              <option value="speaker">Speaker</option>
-              <option value="organizer">Organizer</option>
-            </select>
-          </div>
-          <div id="userDiv" style="display:none;margin-bottom:14px;">
-            <input type="email" name="target_email" placeholder="user@example.com"
-              style="width:100%;padding:10px 12px;border:1.5px solid #e1e5eb;border-radius:8px;font-size:14px;">
-          </div>
-          <button type="submit" style="width:100%;padding:12px;background:#1a73e8;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">
-            <i class="fas fa-paper-plane" style="margin-right:6px;"></i>Send
-          </button>
-        </form>
-      </div>
+  <!-- LEFT: history -->
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-history" style="color:var(--primary);margin-right:8px;"></i>Sent Notifications</h3>
+      <span class="badge badge-info">{{ device_count }} active devices</span>
     </div>
-  </div>
-
-  <!-- History -->
-  <div style="flex:1;">
-    <div class="card">
-      <div class="card-header">
-        <h3><i class="fas fa-history" style="color:#9aa0a6;margin-right:8px;"></i>Sent Notifications</h3>
-      </div>
+    <div class="card-body" style="padding:0;">
       {% if notifications %}
-        {% for n in notifications %}
-          <div style="padding:14px 20px;border-bottom:1px solid #f0f2f5;display:flex;gap:12px;">
-            <div style="width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;
-              {% if n.status == 'sent' %}background:#e6f9f1;{% else %}background:#fee2e2;{% endif %}">
-              <i class="fas fa-bell" style="font-size:14px;{% if n.status == 'sent' %}color:#0d9f6e;{% else %}color:#dc2626;{% endif %}"></i>
-            </div>
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <span style="font-size:14px;font-weight:600;color:#1a1d21;">{{ n.title|truncatechars:40 }}</span>
-                <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;
-                  {% if n.status == 'sent' %}background:#e6f9f1;color:#0d9f6e;{% else %}background:#fee2e2;color:#dc2626;{% endif %}">
-                  {{ n.status|upper }}
-                </span>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Target</th>
+            <th>Cover</th>
+            <th>Files</th>
+            <th>Status</th>
+            <th>Delivered</th>
+            <th>Read</th>
+            <th>Time</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for n in notifications %}
+          <tr>
+            <td>
+              <div style="font-weight:600;color:var(--text);">{{ n.title }}</div>
+              <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">{{ n.body|truncatechars:50 }}</div>
+            </td>
+            <td>
+              {% if n.target_type == 'all' %}<span class="badge badge-info">All</span>
+              {% elif n.target_type == 'role' %}<span class="badge badge-warning">{{ n.target_role }}</span>
+              {% else %}<span class="badge badge-info">User</span>{% endif %}
+            </td>
+            <td>
+              {% if n.cover_image %}
+                <img src="{{ n.cover_image.url }}"
+                     style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--border);"
+                     title="{{ n.cover_image.name }}">
+              {% else %}—{% endif %}
+            </td>
+            <td style="font-size:13px;">
+              {% with n.attachments.count as ac %}
+                {% if ac %}<span class="badge badge-info">{{ ac }} file{{ ac|pluralize }}</span>
+                {% else %}—{% endif %}
+              {% endwith %}
+            </td>
+            <td>
+              {% if n.status == 'sent' %}<span class="badge badge-success">Sent</span>
+              {% elif n.status == 'failed' %}<span class="badge badge-danger">Failed</span>
+              {% else %}<span class="badge badge-warning">Pending</span>{% endif %}
+            </td>
+            <td style="font-size:13px;">{{ n.delivered }}</td>
+            <td style="font-size:13px;">{{ n.seen }}</td>
+            <td style="font-size:12px;color:var(--text-tertiary);white-space:nowrap;">{{ n.created_at|date:"M d, H:i" }}</td>
+            <td>
+              <div style="display:flex;gap:6px;">
+                <a href="{% url 'notification_edit' n.pk %}" class="btn btn-secondary btn-sm">
+                  <i class="fas fa-edit"></i>
+                </a>
+                <form method="post" action="{% url 'notification_delete' n.pk %}"
+                      onsubmit="return confirm('Delete this notification? Users will no longer see it.')">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-danger btn-sm">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </form>
               </div>
-              <div style="font-size:12px;color:#5f6368;margin-bottom:6px;">{{ n.body|truncatechars:60 }}</div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                <span style="font-size:10px;padding:2px 8px;background:#f0f2f5;color:#5f6368;border-radius:4px;">
-                  {% if n.target_type == 'all' %}📢 All{% elif n.target_type == 'role' %}👥 {{ n.target_role|capfirst }}{% else %}👤 User{% endif %}
-                </span>
-                <span style="font-size:10px;padding:2px 8px;background:#e6f9f1;color:#0d9f6e;border-radius:4px;">
-                  ✓ {{ n.sent_count }} sent
-                </span>
-                <span style="font-size:10px;padding:2px 8px;background:#e8f0fe;color:#1a73e8;border-radius:4px;">
-                  👁 {{ n.seen }} read
-                </span>
-                <span style="font-size:10px;color:#9aa0a6;margin-left:auto;">{{ n.created_at|timesince }} ago</span>
-              </div>
-            </div>
-          </div>
-        {% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
       {% else %}
-        <div style="padding:40px;text-align:center;color:#9aa0a6;">No notifications sent yet</div>
+      <div class="empty-state">
+        <i class="fas fa-bell"></i>
+        <h3>No notifications sent yet</h3>
+        <p>Use the form to send your first notification.</p>
+      </div>
       {% endif %}
     </div>
   </div>
 
+  <!-- RIGHT: send form -->
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-paper-plane" style="color:var(--success);margin-right:8px;"></i>Send Notification</h3>
+    </div>
+    <div class="card-body">
+      <form method="POST"
+            action="{% url 'panel_send_notification' %}"
+            enctype="multipart/form-data"
+            style="display:flex;flex-direction:column;gap:16px;">
+        {% csrf_token %}
+
+        <div>
+          <label class="form-label">Title *</label>
+          <input class="form-control" name="title" required maxlength="200"
+                 placeholder="Short, clear title">
+        </div>
+
+        <div>
+          <label class="form-label">Message *</label>
+          <textarea class="form-control" name="body" required rows="4"
+                    placeholder="Notification body text..."></textarea>
+        </div>
+
+        <!-- cover image -->
+        <div>
+          <label class="form-label">
+            Cover Image
+            <span style="font-weight:400;color:var(--text-tertiary);">(optional)</span>
+          </label>
+          <input class="form-control" type="file" name="cover_image" id="cover_input"
+                 accept="image/png,image/jpeg,image/webp">
+          <p style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">
+            Displayed as a banner at the top of the notification.
+          </p>
+          <div id="cover-preview" style="display:none;margin-top:8px;">
+            <img id="cover-preview-img"
+                 style="width:100%;max-height:140px;object-fit:cover;border-radius:10px;border:1px solid var(--border);">
+          </div>
+        </div>
+
+        <!-- attachments -->
+        <div>
+          <label class="form-label">
+            Attachments
+            <span style="font-weight:400;color:var(--text-tertiary);">(optional, multiple)</span>
+          </label>
+          <input class="form-control" type="file" name="attachments" id="attach_input" multiple
+                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.png,.jpg,.jpeg">
+          <p style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">
+            PDF, Office docs, images, ZIP — up to 10 files.
+          </p>
+          <div id="attach-list" style="margin-top:8px;display:flex;flex-direction:column;gap:4px;"></div>
+        </div>
+
+        <div>
+          <label class="form-label">Target</label>
+          <select class="form-control" name="target_type" id="target_type"
+                  onchange="document.getElementById('role_field').style.display=this.value==='role'?'block':'none'">
+            <option value="all">All Users</option>
+            <option value="role">By Role</option>
+          </select>
+        </div>
+
+        <div id="role_field" style="display:none;">
+          <label class="form-label">Role</label>
+          <select class="form-control" name="target_role">
+            <option value="participant">Participant</option>
+            <option value="speaker">Speaker</option>
+            <option value="staff">Staff</option>
+            <option value="team_head">Team Head</option>
+          </select>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="justify-content:center;">
+          <i class="fas fa-paper-plane"></i> Send Now
+        </button>
+      </form>
+    </div>
+  </div>
+
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* cover image live preview */
+document.getElementById('cover_input').addEventListener('change', function () {
+  const wrap = document.getElementById('cover-preview');
+  const img  = document.getElementById('cover-preview-img');
+  if (this.files[0]) {
+    img.src = URL.createObjectURL(this.files[0]);
+    wrap.style.display = 'block';
+  } else {
+    wrap.style.display = 'none';
+  }
+});
+
+/* attachment file list preview */
+document.getElementById('attach_input').addEventListener('change', function () {
+  const list = document.getElementById('attach-list');
+  list.innerHTML = '';
+  Array.from(this.files).forEach(f => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 10px;background:var(--bg);border-radius:6px;';
+    const icon = f.type.startsWith('image/') ? 'fa-image' :
+                 f.name.endsWith('.pdf')      ? 'fa-file-pdf' :
+                 f.name.match(/\.docx?$/)     ? 'fa-file-word' :
+                 f.name.match(/\.xlsx?$/)     ? 'fa-file-excel' :
+                 f.name.match(/\.pptx?$/)     ? 'fa-file-powerpoint' :
+                 f.name.endsWith('.zip')      ? 'fa-file-archive' : 'fa-file';
+    row.innerHTML = `<i class="fas ${icon}" style="color:var(--primary);width:16px;text-align:center;"></i>
+                     <span style="flex:1;">${f.name}</span>
+                     <span style="color:var(--text-tertiary);">${(f.size/1024).toFixed(0)} KB</span>`;
+    list.appendChild(row);
+  });
+});
+</script>
 {% endblock %}

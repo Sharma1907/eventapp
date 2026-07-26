@@ -1,141 +1,81 @@
-"""
-Push notification service using Expo Push API.
-Creates UserNotification records for tracking.
-"""
-import logging
-import json
-import urllib.request
-import urllib.error
+import logging, requests
 from django.utils import timezone
+from django.conf import settings
+from .models import DeviceToken, UserNotification
 
 logger = logging.getLogger(__name__)
+FCM_URL = 'https://fcm.googleapis.com/fcm/send'
+EXPO_URL = 'https://exp.host/--/api/v2/push/send'
 
-EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send'
+def _key(): return getattr(settings,'FCM_SERVER_KEY','')
 
+def _target_users(t, role, user):
+    from apps.accounts.models import User
+    if t=='all': return User.objects.filter(is_active=True)
+    if t=='role' and role: return User.objects.filter(is_active=True, role=role)
+    if t=='user' and user: return User.objects.filter(pk=user.pk)
+    return User.objects.none()
 
-def _send_expo_batch(messages):
-    payload = json.dumps(messages).encode('utf-8')
-    req = urllib.request.Request(
-        EXPO_PUSH_URL,
-        data=payload,
-        headers={
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        },
-        method='POST',
-    )
+def _create_rows(notif, users):
+    now=timezone.now()
+    rows=[UserNotification(notification=notif,user=u,delivered=True,delivered_at=now) for u in users]
+    UserNotification.objects.bulk_create(rows, ignore_conflicts=True)
+
+def _cover_url(notif, request=None):
+    if not notif.cover_image: return None
+    try: return request.build_absolute_uri(notif.cover_image.url) if request else notif.cover_image.url
+    except: return None
+
+def _send_fcm(tokens,title,body,data,img=None):
+    if not tokens: return 0,0,[]
+    key=_key()
+    if not key or 'your-fcm' in key or len(key)<20:
+        logger.warning("FCM_SERVER_KEY placeholder -> skip FCM, in-app still works")
+        return 0,0,[]
+    payload={'registration_ids':tokens,'notification':{'title':title,'body':body},'data':data or {}}
+    if img: payload['notification']['image']=img
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            result = json.loads(resp.read().decode('utf-8'))
-            return result.get('data', [])
-    except urllib.error.URLError as e:
-        logger.error(f"Expo push request failed: {e}")
-        return []
+        r=requests.post(FCM_URL,json=payload,headers={'Authorization':f'key={key}'},timeout=10).json()
+        bad=[]
+        for i,res in enumerate(r.get('results',[])):
+            if res.get('error') in ('NotRegistered','InvalidRegistration'): bad.append(tokens[i])
+        return r.get('success',0),r.get('failure',0),bad
+    except Exception as e:
+        logger.error(f"FCM err {e}"); return 0,len(tokens),[]
 
+def _send_expo(tokens,title,body,data,img=None):
+    if not tokens: return 0,0,[]
+    msgs=[]
+    for t in tokens:
+        m={"to":t,"title":title,"body":body,"data":data or {},"sound":"default"}
+        if img: m["data"]["cover_image"]=img
+        msgs.append(m)
+    try:
+        r=requests.post(EXPO_URL,json=msgs,headers={'Accept':'application/json','Content-Type':'application/json'},timeout=10).json()
+        # Expo returns array of receipts
+        success=sum(1 for x in r.get('data',r) if isinstance(x,dict) and x.get('status')=='ok') if isinstance(r,dict) else len(tokens)
+        return success, len(tokens)-success, []
+    except Exception as e:
+        logger.error(f"Expo push err {e}"); return 0,len(tokens),[]
 
-def send_to_tokens(tokens_with_users, title, body, data=None, notification_obj=None):
-    """
-    Send to list of (token, user) tuples.
-    Creates UserNotification records for tracking.
-    Returns: (success_count, failure_count, failed_tokens)
-    """
-    from .models import UserNotification
+def _send_hybrid(tokens,title,body,data,img=None):
+    expo=[t for t in tokens if t.startswith('ExponentPushToken')]
+    fcm=[t for t in tokens if not t.startswith('ExponentPushToken')]
+    s1,f1,b1=_send_expo(expo,title,body,data,img)
+    s2,f2,b2=_send_fcm(fcm,title,body,data,img)
+    return s1+s2, f1+f2, b1+b2
 
-    if not tokens_with_users:
-        return 0, 0, []
+def send_to_all(title,body,data,notif,request=None):
+    users=_target_users('all','',None); _create_rows(notif,users)
+    tokens=list(DeviceToken.objects.filter(is_active=True,user__in=users).values_list('token',flat=True))
+    return _send_hybrid(tokens,title,body,data,_cover_url(notif,request))
 
-    # Filter valid Expo tokens
-    valid = [(t, u) for t, u in tokens_with_users if t.startswith('ExponentPushToken[') or t.startswith('ExpoPushToken[')]
-    skipped = len(tokens_with_users) - len(valid)
+def send_to_role(role,title,body,data,notif,request=None):
+    users=_target_users('role',role,None); _create_rows(notif,users)
+    tokens=list(DeviceToken.objects.filter(is_active=True,user__in=users).values_list('token',flat=True))
+    return _send_hybrid(tokens,title,body,data,_cover_url(notif,request))
 
-    if not valid:
-        return 0, len(tokens_with_users), [t for t, u in tokens_with_users]
-
-    success_count = 0
-    failure_count = skipped
-    failed_tokens = []
-    now = timezone.now()
-
-    for i in range(0, len(valid), 100):
-        batch = valid[i:i + 100]
-        messages = [{
-            'to': token,
-            'title': title,
-            'body': body,
-            'data': {**(data or {}), 'notification_id': str(notification_obj.id) if notification_obj else ''},
-            'sound': 'default',
-            'priority': 'high',
-            'channelId': 'default',
-        } for token, user in batch]
-
-        tickets = _send_expo_batch(messages)
-
-        for j, ticket in enumerate(tickets):
-            token, user = batch[j]
-            delivered = ticket.get('status') == 'ok'
-
-            if delivered:
-                success_count += 1
-            else:
-                failure_count += 1
-                failed_tokens.append(token)
-
-            # Create UserNotification record
-            if notification_obj and user:
-                UserNotification.objects.update_or_create(
-                    notification=notification_obj,
-                    user=user,
-                    defaults={
-                        'delivered': delivered,
-                        'delivered_at': now if delivered else None,
-                    }
-                )
-
-        if len(tickets) < len(batch):
-            failure_count += len(batch) - len(tickets)
-
-    return success_count, failure_count, failed_tokens
-
-
-def send_to_all(title, body, data=None, notification_obj=None):
-    from .models import DeviceToken
-    tokens_with_users = list(
-        DeviceToken.objects.filter(is_active=True)
-        .select_related('user')
-        .values_list('token', 'user')
-    )
-    # Convert to (token, user_obj) — need full user object
-    from apps.accounts.models import User
-    result = []
-    for token, user_id in tokens_with_users:
-        try:
-            user = User.objects.get(id=user_id)
-            result.append((token, user))
-        except User.DoesNotExist:
-            result.append((token, None))
-    return send_to_tokens(result, title, body, data, notification_obj)
-
-
-def send_to_role(role, title, body, data=None, notification_obj=None):
-    from .models import DeviceToken
-    from apps.accounts.models import User
-    tokens_with_users = list(
-        DeviceToken.objects.filter(is_active=True, user__role=role)
-        .select_related('user')
-        .values_list('token', 'user')
-    )
-    result = []
-    for token, user_id in tokens_with_users:
-        try:
-            user = User.objects.get(id=user_id)
-            result.append((token, user))
-        except User.DoesNotExist:
-            result.append((token, None))
-    return send_to_tokens(result, title, body, data, notification_obj)
-
-
-def send_to_user(user, title, body, data=None, notification_obj=None):
-    from .models import DeviceToken
-    tokens = list(DeviceToken.objects.filter(is_active=True, user=user).values_list('token', flat=True))
-    tokens_with_users = [(t, user) for t in tokens]
-    return send_to_tokens(tokens_with_users, title, body, data, notification_obj)
+def send_to_user(user,title,body,data,notif,request=None):
+    users=_target_users('user','',user); _create_rows(notif,users)
+    tokens=list(DeviceToken.objects.filter(is_active=True,user=user).values_list('token',flat=True))
+    return _send_hybrid(tokens,title,body,data,_cover_url(notif,request))

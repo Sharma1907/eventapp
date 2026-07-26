@@ -5,7 +5,9 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('panel/', include('apps.accounts.admin_urls')), path('panel/', include('apps.notifications.admin_urls')),
+    path('panel/', include('apps.accounts.admin_urls')),
+    path('panel/', include('apps.notifications.admin_urls')),
+    path('panel/', include('apps.checkins.admin_urls')),
 
     # API routes
     path('api/v1/auth/',          include('apps.accounts.urls')),

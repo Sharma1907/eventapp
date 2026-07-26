@@ -1,262 +1,425 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, Image,
-  StyleSheet, Platform, Animated,
+  StyleSheet, Platform, StatusBar, Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONT, SPACE, RADIUS, SHADOW, W, API_URL, API_HEADERS } from '../theme';
-import {
-  Card, GlassCard, Badge, StatBox, SectionHeader,
-  IconBox, FadeIn, PulsingDot, GradientAvatar,
-} from '../components';
+import { COLORS, FONT, SPACE, RADIUS, SHADOW, API_URL, API_HEADERS } from '../theme';
+import { PulsingDot, GradientAvatar } from '../components';
 
-const CW = (W - SPACE.xl * 2 - SPACE.md * 2) / 3;
+const { width: W } = Dimensions.get('window');
+const PAD = SPACE.xl;
 
-const ACTIONS = [
-  { icon: 'calendar-outline', title: 'Schedule', sub: 'Sessions', color: COLORS.brand, bg: COLORS.brandLight },
-  { icon: 'camera-outline', title: 'Photos', sub: 'Gallery', color: COLORS.success, bg: COLORS.successLight },
-  { icon: 'stats-chart-outline', title: 'Polls', sub: 'Vote now', color: COLORS.accent, bg: COLORS.accentLight },
-  { icon: 'newspaper-outline', title: 'Feed', sub: 'Posts', color: COLORS.purple, bg: COLORS.purpleLight },
-  { icon: 'people-outline', title: 'Directory', sub: 'Attendees', color: COLORS.teal, bg: COLORS.tealLight },
-  { icon: 'trophy-outline', title: 'Leaderboard', sub: 'Rankings', color: COLORS.rose, bg: COLORS.roseLight },
+const QUICK = [
+  { icon: 'calendar-outline',    label: 'Schedule',    color: COLORS.brand,   bg: COLORS.brandLight   },
+  { icon: 'camera-outline',      label: 'Photos',      color: COLORS.success, bg: COLORS.successLight },
+  { icon: 'stats-chart-outline', label: 'Polls',       color: COLORS.accent,  bg: COLORS.accentLight  },
+  { icon: 'newspaper-outline',   label: 'Feed',        color: COLORS.purple,  bg: COLORS.purpleLight  },
+  { icon: 'people-outline',      label: 'Directory',   color: COLORS.teal,    bg: COLORS.tealLight    },
+  { icon: 'trophy-outline',      label: 'Leaderboard', color: COLORS.rose,    bg: COLORS.roseLight    },
 ];
 
-const SCHED = [
-  { time: '09:00', title: 'Opening Ceremony', room: 'Hall A', speaker: 'Dr. Amit Singh', live: true },
-  { time: '10:30', title: 'Keynote: AI in Research', room: 'Hall A', speaker: 'Prof. R. Johnson', live: false },
-  { time: '13:00', title: 'Lunch Break', room: 'Cafeteria', speaker: '', live: false },
-  { time: '14:30', title: 'Workshop: Data Science', room: 'Room 201', speaker: 'Dr. S. Williams', live: false },
-];
+const TYPE_STYLE = {
+  ceremony: { icon: 'star-outline',     color: COLORS.brand   },
+  keynote:  { icon: 'mic-outline',       color: COLORS.purple  },
+  workshop: { icon: 'construct-outline', color: COLORS.accent  },
+  paper:    { icon: 'document-outline',  color: COLORS.teal    },
+  poster:   { icon: 'images-outline',    color: COLORS.rose    },
+  break:    { icon: 'cafe-outline',      color: COLORS.success },
+  other:    { icon: 'ellipse-outline',   color: COLORS.textSec },
+};
+
+const DEFAULT_CONF = {
+  name: 'ETD 2026', tagline: 'IIT Delhi', logo_url: null,
+  start_date: '2026-10-23', end_date: '2026-10-25',
+};
+
+function confDay(start) {
+  if (!start) return 1;
+  return Math.max(1, Math.floor((Date.now() - new Date(start).getTime()) / 86400000) + 1);
+}
+function totalDays(start, end) {
+  if (!start || !end) return 3;
+  return Math.max(1, Math.round((new Date(end) - new Date(start)) / 86400000) + 1);
+}
+
+// figure out which event is "current" based on real time
+function classifyEvents(events) {
+  const now = new Date();
+  const hhmm = now.getHours() * 60 + now.getMinutes();
+  return events.map(e => {
+    const [sh, sm] = (e.start_time || '00:00').split(':').map(Number);
+    const [eh, em] = (e.end_time || '23:59').split(':').map(Number);
+    const start = sh * 60 + sm;
+    const end = eh * 60 + em;
+    let status = 'next';
+    if (hhmm >= start && hhmm < end) status = 'current';
+    else if (hhmm >= end) status = 'past';
+    return { ...e, status, startMin: start };
+  }).sort((a, b) => a.startMin - b.startMin);
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
 
 export default function HomeTab({ user, tokens, onOpenNotifications }) {
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [myPoints, setMyPoints] = useState(0);
-  const [myRank, setMyRank] = useState(0);
+  const [unread, setUnread] = useState(0);
+  const [points, setPoints] = useState(0);
+  const [rank, setRank] = useState(0);
+  const [conf, setConf] = useState(DEFAULT_CONF);
+  const [events, setEvents] = useState([]);
+  const [latestNotif, setLatestNotif] = useState(null);
 
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const greeting = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
 
-  // Conference: 3 days. Set START to the first day of ETD 2026.
-  // Update this date when the actual conference dates are confirmed.
-  const CONF_START = new Date('2026-10-01T00:00:00');   // ← change this date
-  const dayDiff = Math.floor((Date.now() - CONF_START.getTime()) / 86400000) + 1;
-  const confDay = Math.min(Math.max(dayDiff, 1), 3);   // clamps to 1–3
-
-  const hY = useRef(new Animated.Value(-20)).current;
-  const hO = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(hY, { toValue: 0, duration: 450, useNativeDriver: true }),
-      Animated.timing(hO, { toValue: 1, duration: 450, useNativeDriver: true }),
-    ]).start();
-  }, []);
-
-  // Fetch unread count
-  const fetchUnread = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     if (!tokens?.access) return;
-    try {
-      const res = await fetch(`${API_URL}/notifications/unread-count/`, {
-        headers: { ...API_HEADERS, 'Authorization': `Bearer ${tokens.access}` },
-      });
-      const data = await res.json();
-      setUnreadCount(data.unread_count || 0);
-    } catch (e) {
-      console.log('Unread fetch failed');
-    }
+    const auth = { ...API_HEADERS, Authorization: `Bearer ${tokens.access}` };
+    const safe = async (url, h) => { try { return await (await fetch(url, { headers: h })).json(); } catch { return null; } };
+    const [u, p, c, ev, notif] = await Promise.all([
+      safe(`${API_URL}/notifications/unread-count/`, auth),
+      safe(`${API_URL}/leaderboard/my/`, auth),
+      safe(`${API_URL}/conferences/settings/`, API_HEADERS),
+      safe(`${API_URL}/events/today/`, API_HEADERS),
+      safe(`${API_URL}/notifications/my/`, auth),
+    ]);
+    if (u) setUnread(u.unread_count || 0);
+    if (p) { setPoints(p.total_points || 0); setRank(p.rank || 0); }
+    if (c) setConf(prev => ({ ...prev, ...c }));
+    if (ev?.events) setEvents(ev.events);
+    if (notif?.notifications?.length) setLatestNotif(notif.notifications[0]);
   }, [tokens]);
 
-  const fetchPoints = useCallback(async () => {
-    if (!tokens?.access) return;
-    try {
-      const res = await fetch(`${API_URL}/leaderboard/my/`, {
-        headers: { ...API_HEADERS, 'Authorization': `Bearer ${tokens.access}` },
-      });
-      const data = await res.json();
-      setMyPoints(data.total_points || 0);
-      setMyRank(data.rank || 0);
-    } catch (e) {
-      console.log('Points fetch failed');
-    }
-  }, [tokens]);
+  useEffect(() => { fetchAll(); const t = setInterval(fetchAll, 30000); return () => clearInterval(t); }, [fetchAll]);
 
-  useEffect(() => {
-    fetchUnread();
-    fetchPoints();
-    const interval = setInterval(() => { fetchUnread(); fetchPoints(); }, 30000);
-    return () => clearInterval(interval);
-  }, [fetchUnread, fetchPoints]);
+  const day = confDay(conf.start_date);
+  const total = totalDays(conf.start_date, conf.end_date);
+  const progress = Math.min(Math.round(((day - 1) / Math.max(total - 1, 1)) * 100), 100);
+  const classified = classifyEvents(events);
+  const liveSession = classified.find(e => e.status === 'current');
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.bg }} showsVerticalScrollIndicator={false}>
-      <LinearGradient colors={['#0333b6', '#0448c8']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={h.header}>
-        <View style={h.arc1} />
-        <View style={h.arc2} />
-        <View style={h.accentBar} />
+    <View style={{ flex: 1, backgroundColor: '#f0f4f9' }}>
+      <StatusBar barStyle="dark-content" />
 
-        <Animated.View style={{ transform: [{ translateY: hY }], opacity: hO }}>
-          <View style={h.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={h.greeting}>{greeting}</Text>
-              <Text style={h.name}>{user.first_name || 'Attendee'}</Text>
-              <View style={h.pill}>
-                <PulsingDot color={COLORS.success} size={7} />
-                <Text style={h.pillText}>ETD 2026  ·  IIT Delhi</Text>
+      {/* floating top bar */}
+      <View style={g.topbar}>
+        <Text style={g.topbarBrand}>{conf.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
+          <TouchableOpacity onPress={onOpenNotifications} style={{ position: 'relative' }}>
+            <Ionicons name="notifications-outline" size={26} color={COLORS.text} />
+            {unread > 0 && (
+              <View style={g.notifBadge}>
+                <Text style={g.notifBadgeText}>{unread > 9 ? '9+' : unread}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          {user.profile_photo_url
+            ? <Image source={{ uri: user.profile_photo_url }} style={g.avatar} />
+            : <GradientAvatar name={user.first_name || user.email} size={40} radius={20} />}
+        </View>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 105, paddingBottom: 120 }}>
+
+        {/* 1. HERO CARD */}
+        <View style={{ paddingHorizontal: PAD, marginBottom: SPACE.lg }}>
+          <View style={g.heroCard}>
+            <View style={g.blob1} />
+            <View style={g.blob2} />
+            <View style={g.heroTop}>
+              <View>
+                <Text style={g.heroLabel}>CURRENT STATUS</Text>
+                <View style={g.heroDayPill}>
+                  <View style={g.heroDayDot} />
+                  <Text style={g.heroDayText}>Day {day} of {total}</Text>
+                </View>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={g.heroLabel}>VENUE</Text>
+                <Text style={g.heroVenue} numberOfLines={1}>{conf.tagline}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
-              {/* Notification Bell */}
-              <TouchableOpacity onPress={onOpenNotifications} style={h.bellBtn}>
-                <Ionicons name="notifications-outline" size={22} color={COLORS.textInverse} />
-                {unreadCount > 0 && (
-                  <View style={h.bellBadge}>
-                    <Text style={h.bellBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-              {/* Avatar */}
-              {user.profile_photo_url ? (
-                <Image source={{ uri: user.profile_photo_url }} style={{ width: 48, height: 48, borderRadius: 15, borderWidth: 2, borderColor: COLORS.glassBorder }} />
-              ) : (
-                <GradientAvatar name={user.first_name || user.email} size={48} radius={15} style={{ borderWidth: 2, borderColor: COLORS.glassBorder }} />
-              )}
+            <Text style={g.heroGreeting}>Good {greeting},{'\n'}{user.first_name || 'Attendee'} 👋</Text>
+            <View style={{ marginTop: SPACE.lg }}>
+              <View style={g.progressRow}>
+                <Text style={g.progressLbl}>Conference Progress</Text>
+                <Text style={g.progressPct}>{progress}%</Text>
+              </View>
+              <View style={g.progressTrack}>
+                <View style={[g.progressFill, { width: `${progress}%` }]} />
+              </View>
             </View>
           </View>
+        </View>
 
-          <GlassCard style={h.statsRow}>
-            {[
-              [`Day ${confDay}`, 'of 3'],
-              [`${myPoints}`, 'Points'],
-              [myRank > 0 ? `#${myRank}` : '—', 'Rank'],
-            ].map(([v, l], i) => (
-              <React.Fragment key={l}>
-                <StatBox value={v} label={l} light />
-                {i < 2 && <View style={h.statSep} />}
-              </React.Fragment>
-            ))}
-          </GlassCard>
-        </Animated.View>
-      </LinearGradient>
-
-      <View style={{ backgroundColor: '#0448c8', height: 26 }}><View style={h.curve} /></View>
-
-      <View style={h.body}>
-        <FadeIn delay={100}>
-          <LinearGradient colors={[COLORS.success, '#047857']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={h.live}>
-            <View style={{ flex: 1 }}>
-              <View style={h.liveRow}><PulsingDot color={COLORS.textInverse} size={7} /><Text style={h.liveLabel}>LIVE NOW</Text></View>
-              <Text style={h.liveTitle}>Opening Ceremony</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
-                <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.7)" style={{ marginRight: 3 }} />
-                <Text style={h.liveSub}>Hall A  ·  Dr. Amit Singh</Text>
+        {/* 2. LIVE SESSION */}
+        {liveSession && (
+          <View style={[g.glassCard, { marginHorizontal: PAD, marginBottom: SPACE.lg }]}>
+            <View style={g.liveTopRow}>
+              <View style={g.livePill}>
+                <PulsingDot color={COLORS.error} size={7} />
+                <Text style={g.livePillText}>LIVE NOW</Text>
               </View>
+              <Text style={g.liveRoom}>{(liveSession.room || '').toUpperCase()}</Text>
             </View>
-            <TouchableOpacity style={h.joinBtn} activeOpacity={0.8}>
-              <Text style={h.joinText}>Join</Text>
-              <Ionicons name="arrow-forward" size={14} color={COLORS.success} />
+            <Text style={g.liveTitle}>{liveSession.title}</Text>
+            {!!liveSession.speaker && <Text style={g.liveSpeaker}>{liveSession.speaker}</Text>}
+            <TouchableOpacity style={{ borderRadius: 20, overflow: 'hidden', marginTop: SPACE.md }} activeOpacity={0.82}>
+              <LinearGradient colors={[COLORS.brand, COLORS.brandDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.md, paddingVertical: SPACE.lg, borderRadius: 20 }}>
+                <Text style={{ fontSize: FONT.md, fontWeight: FONT.w7, color: '#fff' }}>Join Stream</Text>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              </LinearGradient>
             </TouchableOpacity>
-          </LinearGradient>
-        </FadeIn>
-
-        <FadeIn delay={180}>
-          <SectionHeader title="Quick Actions" style={{ marginTop: SPACE.md }} />
-          <View style={h.grid}>
-            {ACTIONS.map((a, i) => (
-              <FadeIn key={a.title} delay={200 + i * 40}>
-                <TouchableOpacity style={[h.actionCard, { width: CW }]} activeOpacity={0.75}>
-                  <IconBox name={a.icon} size={22} color={a.color} bg={a.bg} boxSize={46} radius={RADIUS.md} />
-                  <Text style={h.actionTitle}>{a.title}</Text>
-                  <Text style={h.actionSub}>{a.sub}</Text>
-                </TouchableOpacity>
-              </FadeIn>
-            ))}
           </View>
-        </FadeIn>
+        )}
 
-        <FadeIn delay={320}>
-          <TouchableOpacity activeOpacity={0.82} style={{ marginBottom: SPACE.xl }}>
-            <LinearGradient colors={[COLORS.brand, COLORS.brandDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={h.qrBanner}>
-              <View style={h.qrDeco} />
-              <View style={{ flex: 1 }}>
-                <Badge label="QUICK ACCESS" color={COLORS.accent} bg={COLORS.accentMid} style={{ marginBottom: SPACE.sm }} />
-                <Text style={h.qrTitle}>My Conference QR</Text>
-                <Text style={h.qrSub}>Show at check-in & meal entry</Text>
+        {/* 3. QUICK ACTIONS — horizontal */}
+        <Text style={[g.sectionTitle, { paddingHorizontal: PAD }]}>Quick Actions</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: PAD, gap: SPACE.md, paddingBottom: SPACE.xs }}
+          style={{ marginBottom: SPACE.xl }}>
+          {QUICK.map(q => (
+            <TouchableOpacity key={q.label} style={g.quickCard} activeOpacity={0.75}>
+              <View style={[g.quickIcon, { backgroundColor: q.bg }]}>
+                <Ionicons name={q.icon} size={22} color={q.color} />
               </View>
-              <View style={h.qrIcon}><Ionicons name="qr-code" size={30} color={COLORS.brand} /></View>
+              <Text style={g.quickLabel}>{q.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* 4. SHOW MY QR */}
+        <View style={{ paddingHorizontal: PAD, marginBottom: SPACE.xl }}>
+          <TouchableOpacity activeOpacity={0.85}>
+            <LinearGradient colors={[COLORS.text, '#2d3748']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={g.qrBtn}>
+              <Ionicons name="qr-code" size={26} color="#fff" style={{ marginRight: SPACE.md }} />
+              <Text style={g.qrBtnText}>Show My QR</Text>
+              <View style={{ flex: 1 }} />
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.5)" />
             </LinearGradient>
           </TouchableOpacity>
-        </FadeIn>
+        </View>
 
-        <FadeIn delay={380}>
-          <SectionHeader title="Today's Schedule" action="View All" />
-          {SCHED.map((s, i) => (
-            <FadeIn key={i} delay={400 + i * 50}>
-              <Card style={h.schedCard} shadow="sm">
-                <View style={h.schedTimeCol}>
-                  <Text style={h.schedTime}>{s.time}</Text>
-                  {s.live && <PulsingDot color={COLORS.success} size={7} />}
-                </View>
-                <View style={h.schedSep} />
-                <View style={{ flex: 1 }}>
-                  <View style={h.schedTitleRow}>
-                    <Text style={h.schedTitle} numberOfLines={1}>{s.title}</Text>
-                    {s.live && <Badge label="LIVE" color={COLORS.error} bg={COLORS.errorLight} />}
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
-                    <Ionicons name="location-outline" size={11} color={COLORS.textTer} style={{ marginRight: 3 }} />
-                    <Text style={h.schedSub}>{s.room}{s.speaker ? `  ·  ${s.speaker}` : ''}</Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.border} style={{ marginLeft: SPACE.sm }} />
-              </Card>
-            </FadeIn>
+        {/* 5. MY STATUS */}
+        <Text style={[g.sectionTitle, { paddingHorizontal: PAD }]}>My Status</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: PAD, gap: SPACE.md, paddingBottom: SPACE.xs }}
+          style={{ marginBottom: SPACE.xl }}>
+          {[
+            { label: 'RANK',    value: rank > 0 ? `#${rank}` : '—' },
+            { label: 'POINTS',  value: points >= 1000 ? `${(points/1000).toFixed(1)}k` : String(points) },
+            { label: 'DAY',     value: `${day}/${total}` },
+            { label: 'PROFILE', value: user.profile_complete ? '✓ Done' : 'Pending' },
+          ].map(s => (
+            <View key={s.label} style={g.statusPill}>
+              <Text style={g.statusPillLabel}>{s.label}</Text>
+              <Text style={g.statusPillValue}>{s.value}</Text>
+            </View>
           ))}
-        </FadeIn>
-        <View style={{ height: 110 }} />
-      </View>
-    </ScrollView>
+        </ScrollView>
+
+        {/* 6. TIMELINE */}
+        <View style={[g.sectionRow, { paddingHorizontal: PAD }]}>
+          <Text style={g.sectionTitle}>Timeline</Text>
+          <TouchableOpacity><Text style={g.sectionAction}>See Full</Text></TouchableOpacity>
+        </View>
+        <View style={{ paddingHorizontal: PAD, gap: SPACE.md, marginBottom: SPACE.xl }}>
+          {classified.length === 0 && (
+            <View style={[g.glassCard, { alignItems: 'center', paddingVertical: SPACE.xxl }]}>
+              <Ionicons name="calendar-outline" size={32} color={COLORS.textTer} />
+              <Text style={{ fontSize: FONT.sm, color: COLORS.textTer, marginTop: SPACE.sm }}>No events scheduled for today</Text>
+            </View>
+          )}
+          {classified.map((ev, i) => {
+            const ts = TYPE_STYLE[ev.event_type] || TYPE_STYLE.other;
+            const time = (ev.start_time || '').slice(0, 5);
+
+            if (ev.status === 'current') {
+              return (
+                <View key={ev.id || i} style={g.timelineCurrent}>
+                  <View style={g.blob1} />
+                  <View style={g.timelineCurrentTop}>
+                    <Text style={g.timelineCurrentTime}>{time}</Text>
+                    <View style={g.nowPill}><Text style={g.nowPillText}>NOW</Text></View>
+                    <View style={[g.roomPill, { borderColor: 'rgba(255,255,255,0.2)' }]}>
+                      <Text style={[g.roomPillText, { color: 'rgba(255,255,255,0.7)' }]}>{ev.room}</Text>
+                    </View>
+                  </View>
+                  <Text style={g.timelineCurrentTitle}>{ev.title}</Text>
+                  {!!ev.speaker && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.sm }}>
+                      <View style={g.speakerDot}><Ionicons name="person" size={12} color="rgba(255,255,255,0.7)" /></View>
+                      <Text style={{ fontSize: FONT.sm, color: 'rgba(255,255,255,0.7)' }}>{ev.speaker}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            }
+
+            return (
+              <View key={ev.id || i} style={[g.glassCard, ev.status === 'past' && { opacity: 0.5 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACE.xs }}>
+                  <Text style={g.timelineStatus}>{ev.status === 'past' ? 'PAST' : 'NEXT'}</Text>
+                  <View style={g.roomPill}><Text style={g.roomPillText}>{ev.room}</Text></View>
+                </View>
+                <Text style={g.timelineOtherTime}>{time}</Text>
+                <Text style={g.timelineOtherTitle}>{ev.title}</Text>
+                {!!ev.speaker && <Text style={{ fontSize: FONT.xs, color: COLORS.textTer, marginTop: 2 }}>{ev.speaker}</Text>}
+              </View>
+            );
+          })}
+        </View>
+
+        {/* 7. LATEST NOTIFICATION */}
+        {latestNotif && (
+          <View style={{ paddingHorizontal: PAD, marginBottom: SPACE.xl }}>
+            <View style={[g.sectionRow, { marginBottom: 0 }]}>
+              <Text style={g.sectionTitle}>Latest</Text>
+            </View>
+            <TouchableOpacity style={g.annCard} activeOpacity={0.85} onPress={onOpenNotifications}>
+              <LinearGradient colors={[COLORS.brand, COLORS.brandDark]} style={g.annTop}>
+                <Ionicons name="megaphone" size={44} color="rgba(255,255,255,0.12)" />
+              </LinearGradient>
+              <View style={g.annBottom}>
+                <Text style={g.annTime}>{timeAgo(latestNotif.delivered_at || latestNotif.created_at)}</Text>
+                <Text style={g.annTitle} numberOfLines={2}>{latestNotif.title}</Text>
+                <Text style={g.annBody} numberOfLines={3}>{latestNotif.body}</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+      </ScrollView>
+    </View>
   );
 }
 
-const h = StyleSheet.create({
-  header: { paddingTop: Platform.OS === 'ios' ? 58 : 46, paddingBottom: 26, paddingHorizontal: SPACE.xl, overflow: 'hidden' },
-  arc1: { position: 'absolute', width: 260, height: 260, borderRadius: 130, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', top: -80, right: -60 },
-  arc2: { position: 'absolute', width: 180, height: 180, borderRadius: 90, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', top: 10, right: -10 },
-  accentBar: { position: 'absolute', width: 4, height: 60, backgroundColor: COLORS.accent, borderRadius: 2, top: 60, left: 0 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: SPACE.lg },
-  greeting: { fontSize: FONT.sm, color: 'rgba(255,255,255,0.58)', fontWeight: FONT.w5 },
-  name: { fontSize: FONT.xxl, fontWeight: FONT.w8, color: COLORS.textInverse, marginTop: 2, letterSpacing: -0.3 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, backgroundColor: 'rgba(255,255,255,0.10)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.full, alignSelf: 'flex-start', marginTop: SPACE.sm },
-  pillText: { fontSize: FONT.xs, color: 'rgba(255,255,255,0.85)', fontWeight: FONT.w6 },
-  bellBtn: { width: 44, height: 44, borderRadius: RADIUS.md, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  bellBadge: { position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 2, borderColor: '#0333b6' },
-  bellBadgeText: { fontSize: 10, fontWeight: FONT.w8, color: COLORS.textInverse },
-  statsRow: { flexDirection: 'row', paddingVertical: SPACE.xs, marginTop: SPACE.xs },
-  statSep: { width: 1, backgroundColor: 'rgba(255,255,255,0.14)', marginVertical: SPACE.sm },
-  curve: { flex: 1, backgroundColor: COLORS.bg, borderTopLeftRadius: RADIUS.xxxl, borderTopRightRadius: RADIUS.xxxl },
-  body: { paddingHorizontal: SPACE.xl, paddingTop: SPACE.lg },
-  live: { borderRadius: RADIUS.xl, padding: SPACE.lg, flexDirection: 'row', alignItems: 'center', marginBottom: SPACE.xl, overflow: 'hidden' },
-  liveRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, marginBottom: SPACE.sm },
-  liveLabel: { fontSize: FONT.xs, fontWeight: FONT.w8, color: COLORS.textInverse, letterSpacing: 1 },
-  liveTitle: { fontSize: FONT.md, fontWeight: FONT.w7, color: COLORS.textInverse },
-  liveSub: { fontSize: FONT.xs, color: 'rgba(255,255,255,0.70)' },
-  joinBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.textInverse, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderRadius: RADIUS.md },
-  joinText: { fontSize: FONT.sm, fontWeight: FONT.w7, color: COLORS.success },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: SPACE.md },
-  actionCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACE.md, alignItems: 'center', marginBottom: SPACE.md, ...SHADOW.sm, borderWidth: Platform.OS === 'android' ? 1 : 0, borderColor: COLORS.borderLight },
-  actionTitle: { fontSize: FONT.xs, fontWeight: FONT.w7, color: COLORS.text, textAlign: 'center', marginTop: SPACE.sm },
-  actionSub: { fontSize: 10, color: COLORS.textTer, marginTop: 2, textAlign: 'center' },
-  qrBanner: { borderRadius: RADIUS.xl, padding: SPACE.lg, flexDirection: 'row', alignItems: 'center', overflow: 'hidden', ...SHADOW.brand },
-  qrDeco: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)', right: 20, top: -30 },
-  qrTitle: { fontSize: FONT.md, fontWeight: FONT.w7, color: COLORS.textInverse },
-  qrSub: { fontSize: FONT.xs, color: 'rgba(255,255,255,0.65)', marginTop: 3 },
-  qrIcon: { width: 56, height: 56, borderRadius: RADIUS.lg, backgroundColor: COLORS.textInverse, alignItems: 'center', justifyContent: 'center' },
-  schedCard: { padding: SPACE.md, marginBottom: SPACE.sm, flexDirection: 'row', alignItems: 'center' },
-  schedTimeCol: { width: 50, alignItems: 'center', gap: SPACE.xs },
-  schedTime: { fontSize: FONT.xs, fontWeight: FONT.w7, color: COLORS.textSec },
-  schedSep: { width: 1, height: 44, backgroundColor: COLORS.borderLight, marginHorizontal: SPACE.md },
-  schedTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-  schedTitle: { fontSize: FONT.sm, fontWeight: FONT.w6, color: COLORS.text, flex: 1, marginRight: SPACE.sm },
-  schedSub: { fontSize: FONT.xs, color: COLORS.textTer },
+const g = StyleSheet.create({
+  topbar: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 54 : 44,
+    paddingBottom: SPACE.md, paddingHorizontal: PAD,
+    backgroundColor: 'rgba(240,244,249,0.92)',
+  },
+  topbarBrand: { fontSize: FONT.xxl, fontWeight: FONT.w8, color: COLORS.brand, letterSpacing: -0.3 },
+  notifBadge: {
+    position: 'absolute', top: -3, right: -3,
+    minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: COLORS.error, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 3, borderWidth: 2, borderColor: '#f0f4f9',
+  },
+  notifBadgeText: { fontSize: 9, fontWeight: FONT.w8, color: '#fff' },
+  avatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: COLORS.border },
+
+  heroCard: {
+    backgroundColor: COLORS.brand, borderRadius: 32, padding: SPACE.xxl, overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: COLORS.brand, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.4, shadowRadius: 24 },
+      android: { elevation: 8 },
+    }),
+  },
+  blob1: { position: 'absolute', width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.06)', top: -80, right: -60 },
+  blob2: { position: 'absolute', width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(245,158,11,0.08)', bottom: -40, left: -40 },
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACE.xl },
+  heroLabel: { fontSize: 9, fontWeight: FONT.w8, color: 'rgba(255,255,255,0.45)', letterSpacing: 1.5, marginBottom: SPACE.xs },
+  heroDayPill: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+    backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs, borderRadius: RADIUS.full,
+  },
+  heroDayDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#fde68a' },
+  heroDayText: { fontSize: FONT.xs, fontWeight: FONT.w6, color: '#fff' },
+  heroVenue: { fontSize: FONT.sm, fontWeight: FONT.w6, color: 'rgba(255,255,255,0.85)' },
+  heroGreeting: { fontSize: 34, fontWeight: FONT.w9, color: '#fff', lineHeight: 40, letterSpacing: -0.5 },
+  progressRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACE.sm },
+  progressLbl: { fontSize: 10, fontWeight: FONT.w6, color: 'rgba(255,255,255,0.55)', letterSpacing: 0.5 },
+  progressPct: { fontSize: 10, fontWeight: FONT.w8, color: 'rgba(255,255,255,0.7)' },
+  progressTrack: { height: 4, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 2, backgroundColor: '#fff' },
+
+  glassCard: {
+    backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 28, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)', padding: SPACE.xl,
+    ...Platform.select({
+      ios: { shadowColor: '#002182', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16 },
+      android: { elevation: 0 },
+    }),
+  },
+
+  liveTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACE.md },
+  livePill: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+    backgroundColor: COLORS.error, paddingHorizontal: SPACE.md, paddingVertical: 6, borderRadius: RADIUS.full,
+  },
+  livePillText: { fontSize: 10, fontWeight: FONT.w8, color: '#fff', letterSpacing: 1 },
+  liveRoom: { fontSize: FONT.xs, fontWeight: FONT.w7, color: COLORS.textTer, letterSpacing: 1 },
+  liveTitle: { fontSize: FONT.xl + 2, fontWeight: FONT.w9, color: COLORS.brand, letterSpacing: -0.3, marginBottom: SPACE.xs },
+  liveSpeaker: { fontSize: FONT.base, color: COLORS.textSec },
+
+  sectionTitle: { fontSize: 28, fontWeight: FONT.w9, color: COLORS.brand, letterSpacing: -0.5, marginBottom: SPACE.md },
+  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  sectionAction: { fontSize: FONT.sm, fontWeight: FONT.w7, color: COLORS.textSec, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: SPACE.md },
+
+  quickCard: {
+    borderRadius: 24, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.lg,
+    alignItems: 'flex-start', gap: SPACE.md, minWidth: 100,
+    backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
+  },
+  quickIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  quickLabel: { fontSize: FONT.sm, fontWeight: FONT.w6, color: COLORS.text },
+
+  qrBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: SPACE.xl, paddingVertical: SPACE.lg + 2, borderRadius: 24,
+    ...Platform.select({
+      ios: { shadowColor: COLORS.text, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 12 },
+      android: { elevation: 4 },
+    }),
+  },
+  qrBtnText: { fontSize: FONT.md, fontWeight: FONT.w8, color: '#fff', letterSpacing: 0.3 },
+
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+    backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
+    paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md, borderRadius: RADIUS.full,
+  },
+  statusPillLabel: { fontSize: 10, fontWeight: FONT.w8, color: COLORS.textTer, letterSpacing: 1.5 },
+  statusPillValue: { fontSize: FONT.xl, fontWeight: FONT.w9, color: COLORS.text },
+
+  timelineCurrent: {
+    backgroundColor: COLORS.brand, borderRadius: 32, padding: SPACE.xxl, overflow: 'hidden',
+    ...Platform.select({
+      ios: { shadowColor: COLORS.brand, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 20 },
+      android: { elevation: 6 },
+    }),
+  },
+  timelineCurrentTop: { flexDirection: 'row', alignItems: 'baseline', gap: SPACE.md, marginBottom: SPACE.lg },
+  timelineCurrentTime: { fontSize: 44, fontWeight: FONT.w9, color: '#fff', lineHeight: 44 },
+  nowPill: { backgroundColor: COLORS.accent, paddingHorizontal: SPACE.sm, paddingVertical: 3, borderRadius: RADIUS.full },
+  nowPillText: { fontSize: 10, fontWeight: FONT.w8, color: '#fff', letterSpacing: 1 },
+  timelineCurrentTitle: { fontSize: 28, fontWeight: FONT.w9, color: '#fff', letterSpacing: -0.3, lineHeight: 32 },
+  speakerDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  timelineStatus: { fontSize: 10, fontWeight: FONT.w8, color: COLORS.textTer, letterSpacing: 1.5 },
+  timelineOtherTime: { fontSize: FONT.xl, fontWeight: FONT.w9, color: COLORS.text, marginTop: SPACE.xs },
+  timelineOtherTitle: { fontSize: FONT.md, fontWeight: FONT.w6, color: COLORS.textSec, marginTop: 2 },
+  roomPill: { borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACE.sm, paddingVertical: 3, borderRadius: RADIUS.full },
+  roomPillText: { fontSize: 10, fontWeight: FONT.w6, color: COLORS.textTer },
+
+  annCard: { borderRadius: 32, overflow: 'hidden', marginTop: SPACE.sm, ...SHADOW.lg },
+  annTop: { height: 120, alignItems: 'center', justifyContent: 'center' },
+  annBottom: { backgroundColor: COLORS.text, padding: SPACE.xl },
+  annTime: { fontSize: 10, fontWeight: FONT.w7, color: 'rgba(255,255,255,0.4)', letterSpacing: 1, marginBottom: SPACE.sm },
+  annTitle: { fontSize: FONT.xl, fontWeight: FONT.w9, color: '#fff', lineHeight: 26, marginBottom: SPACE.sm },
+  annBody: { fontSize: FONT.sm, color: 'rgba(255,255,255,0.7)', lineHeight: 20 },
 });

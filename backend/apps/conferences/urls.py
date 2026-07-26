@@ -1,2 +1,6 @@
 from django.urls import path
-urlpatterns = []
+from . import views
+
+urlpatterns = [
+    path('settings/', views.conference_settings, name='conference_settings_api'),
+]

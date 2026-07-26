@@ -1,0 +1,70 @@
+{% extends "panel/base.html" %}
+{% block title %}Events & Schedule — ETD 2026{% endblock %}
+{% block page_title %}Events & Schedule{% endblock %}
+{% block page_subtitle %}Manage sessions shown in the mobile app{% endblock %}
+
+{% block content %}
+{% for m in messages %}
+<div class="alert alert-{{ m.tags|default:'success' }}"><i class="fas fa-check-circle"></i> {{ m }}</div>
+{% endfor %}
+
+<div class="page-header">
+    <h1>{{ total }} Event{{ total|pluralize }}</h1>
+    <a href="{% url 'event_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Add Event</a>
+</div>
+
+{% for day, events in grouped.items %}
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-header">
+        <h3><i class="fas fa-calendar-day" style="color:var(--primary);margin-right:8px;"></i>Day {{ day }}</h3>
+        <span class="badge badge-info">{{ events|length }} session{{ events|length|pluralize }}</span>
+    </div>
+    <div class="card-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Title</th>
+                    <th>Type</th>
+                    <th>Room</th>
+                    <th>Speaker</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in events %}
+                <tr>
+                    <td style="font-weight:600;white-space:nowrap;">{{ e.start_time|time:"H:i" }} – {{ e.end_time|time:"H:i" }}</td>
+                    <td style="font-weight:600;">{{ e.title }}</td>
+                    <td><span class="badge badge-info">{{ e.get_event_type_display }}</span></td>
+                    <td>{{ e.room|default:"—" }}</td>
+                    <td>{{ e.speaker|default:"—" }}</td>
+                    <td>
+                        {% if e.is_active %}<span class="badge badge-success">Active</span>
+                        {% else %}<span class="badge" style="background:var(--bg);color:var(--text-tertiary);">Hidden</span>{% endif %}
+                    </td>
+                    <td>
+                        <div style="display:flex;gap:8px;">
+                            <a href="{% url 'event_edit' e.pk %}" class="btn btn-secondary btn-sm">Edit</a>
+                            <form method="post" action="{% url 'event_delete' e.pk %}" onsubmit="return confirm('Delete this event?')">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% empty %}
+<div class="card"><div class="empty-state">
+    <i class="fas fa-calendar-alt"></i>
+    <h3>No events yet</h3>
+    <p>Add your first session to build the conference schedule.</p>
+    <a href="{% url 'event_create' %}" class="btn btn-primary"><i class="fas fa-plus"></i> Add Event</a>
+</div></div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,126 @@
+{% extends "panel/base.html" %}
+{% block title %}Edit Notification — ETD 2026{% endblock %}
+{% block page_title %}Edit Notification{% endblock %}
+{% block page_subtitle %}{{ notif.title }}{% endblock %}
+
+{% block content %}
+{% for m in messages %}
+<div class="alert alert-{{ m.tags|default:'success' }}"><i class="fas fa-check-circle"></i> {{ m }}</div>
+{% endfor %}
+
+<div style="max-width:680px; display:flex; flex-direction:column; gap:24px;">
+
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-edit" style="color:var(--primary);margin-right:8px;"></i>Edit Content</h3>
+    </div>
+    <div class="card-body">
+      <form method="POST" enctype="multipart/form-data"
+            style="display:flex;flex-direction:column;gap:16px;">
+        {% csrf_token %}
+
+        <div>
+          <label class="form-label">Title *</label>
+          <input class="form-control" name="title" required value="{{ notif.title }}">
+        </div>
+
+        <div>
+          <label class="form-label">Message *</label>
+          <textarea class="form-control" name="body" required rows="4">{{ notif.body }}</textarea>
+        </div>
+
+        <!-- cover image -->
+        <div>
+          <label class="form-label">Cover Image</label>
+          {% if notif.cover_image %}
+            <div style="margin-bottom:10px;">
+              <img src="{{ notif.cover_image.url }}"
+                   style="width:100%;max-height:160px;object-fit:cover;border-radius:10px;border:1px solid var(--border);">
+              <p style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">
+                Current cover — upload a new file to replace it.
+              </p>
+            </div>
+          {% endif %}
+          <input class="form-control" type="file" name="cover_image" id="cover_input"
+                 accept="image/png,image/jpeg,image/webp">
+          <div id="cover-preview" style="display:none;margin-top:8px;">
+            <img id="cover-preview-img"
+                 style="width:100%;max-height:140px;object-fit:cover;border-radius:10px;border:1px solid var(--border);">
+          </div>
+        </div>
+
+        <!-- add new attachments -->
+        <div>
+          <label class="form-label">Add Attachments</label>
+          <input class="form-control" type="file" name="attachments" id="attach_input" multiple
+                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.png,.jpg,.jpeg">
+          <div id="attach-list" style="margin-top:8px;display:flex;flex-direction:column;gap:4px;"></div>
+        </div>
+
+        <div style="display:flex;gap:12px;">
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save"></i> Save Changes
+          </button>
+          <a href="{% url 'panel_notifications' %}" class="btn btn-secondary">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- existing attachments -->
+  {% if attachments %}
+  <div class="card">
+    <div class="card-header">
+      <h3><i class="fas fa-paperclip" style="color:var(--primary);margin-right:8px;"></i>
+        Attachments ({{ attachments|length }})
+      </h3>
+    </div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
+      {% for a in attachments %}
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg);border-radius:10px;">
+        <i class="fas fa-paperclip" style="color:var(--primary);"></i>
+        <span style="flex:1;font-size:14px;font-weight:500;">{{ a.filename }}</span>
+        <a href="{{ a.file.url }}" target="_blank" class="btn btn-secondary btn-sm">
+          <i class="fas fa-download"></i> Download
+        </a>
+        <!-- delete this attachment -->
+        <form method="POST" style="display:inline;">
+          {% csrf_token %}
+          <input type="hidden" name="delete_attachment" value="{{ a.pk }}">
+          <button type="submit" class="btn btn-danger btn-sm"
+                  onclick="return confirm('Remove this attachment?')">
+            <i class="fas fa-times"></i>
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('cover_input').addEventListener('change', function () {
+  const wrap = document.getElementById('cover-preview');
+  const img  = document.getElementById('cover-preview-img');
+  if (this.files[0]) { img.src = URL.createObjectURL(this.files[0]); wrap.style.display = 'block'; }
+  else { wrap.style.display = 'none'; }
+});
+
+document.getElementById('attach_input').addEventListener('change', function () {
+  const list = document.getElementById('attach-list');
+  list.innerHTML = '';
+  Array.from(this.files).forEach(f => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 10px;background:var(--bg);border-radius:6px;';
+    row.innerHTML = `<i class="fas fa-file" style="color:var(--primary);"></i>
+                     <span style="flex:1;">${f.name}</span>
+                     <span style="color:var(--text-tertiary);">${(f.size/1024).toFixed(0)} KB</span>`;
+    list.appendChild(row);
+  });
+});
+</script>
+{% endblock %}

@@ -16,8 +16,10 @@
     "expo-linear-gradient": "~13.0.2",
     "expo-notifications": "~0.28.19",
     "expo-status-bar": "~1.12.1",
+    "qrcode-generator": "^1.4.4",
     "react": "18.2.0",
     "react-native": "0.74.5",
+    "react-native-svg": "15.2.0",
     "typescript": "~5.3.3"
   },
   "devDependencies": {

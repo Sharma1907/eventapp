@@ -84,14 +84,10 @@ export function IconBox({ name, size = 20, color = COLORS.brand, bg, boxSize = 4
 
 export function FadeIn({ children, delay = 0, duration = 380, style }) {
   const o = useRef(new Animated.Value(0)).current;
-  const y = useRef(new Animated.Value(14)).current;
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(o, { toValue: 1, duration, delay, useNativeDriver: true }),
-      Animated.timing(y, { toValue: 0, duration, delay, useNativeDriver: true }),
-    ]).start();
+    Animated.timing(o, { toValue: 1, duration, delay, useNativeDriver: true }).start();
   }, []);
-  return <Animated.View style={[{ opacity: o, transform: [{ translateY: y }] }, style]}>{children}</Animated.View>;
+  return <Animated.View style={[{ opacity: o }, style]}>{children}</Animated.View>;
 }
 
 export function PulsingDot({ color = COLORS.success, size = 8 }) {

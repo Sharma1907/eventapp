@@ -329,7 +329,9 @@
             <a href="#" class="menu-item">
                 <i class="fas fa-people-group"></i> Teams
             </a>
-            <a href="#" class="menu-item">
+                <i class="fas fa-utensils"></i> Meal Scanner
+            </a>
+            <a href="/panel/checkins/scanner/" class="menu-item {% if request.resolver_match.url_name == 'checkin_scanner' %}active{% endif %}">
                 <i class="fas fa-qrcode"></i> Check-In Scanner
             </a>
 
@@ -363,7 +365,7 @@
             <a href="#" class="menu-item">
                 <i class="fas fa-file-export"></i> Reports
             </a>
-            <a href="#" class="menu-item">
+            <a href="/panel/settings/conference/" class="menu-item {% if request.resolver_match.url_name == 'conference_settings' %}active{% endif %}">
                 <i class="fas fa-cog"></i> Settings
             </a>
         </nav>

@@ -1,0 +1,54 @@
+{% extends "panel/base.html" %}
+{% block title %}Check-In List — ETD 2026{% endblock %}
+{% block page_title %}Check-In List{% endblock %}
+{% block page_subtitle %}All conference check-ins{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Checked-In Attendees <span style="font-size:16px;font-weight:500;color:var(--text-tertiary);">({{ checkins|length }})</span></h1>
+  <a href="/panel/checkins/scanner/" class="btn btn-primary">
+    <i class="fas fa-qrcode"></i> Open Scanner
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding:0;">
+    {% if checkins %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Attendee</th>
+          <th>Registration ID</th>
+          <th>Role</th>
+          <th>Affiliation</th>
+          <th>Scanned By</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in checkins %}
+        <tr>
+          <td>
+            <div style="font-weight:600;">{{ c.user.get_full_name }}</div>
+            <div style="font-size:12px;color:var(--text-tertiary);">{{ c.user.email }}</div>
+          </td>
+          <td><code>{{ c.user.registration_id|default:"—" }}</code></td>
+          <td><span class="badge badge-info">{{ c.user.role|upper }}</span></td>
+          <td>{{ c.user.affiliation|default:"—" }}</td>
+          <td>{{ c.scanned_by.get_full_name|default:"System" }}</td>
+          <td style="font-size:13px;color:var(--text-secondary);">{{ c.scanned_at|date:"d M Y, H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-qrcode"></i>
+      <h3>No check-ins yet</h3>
+      <p>Start scanning to mark attendees present.</p>
+      <a href="/panel/checkins/scanner/" class="btn btn-primary">Open Scanner</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

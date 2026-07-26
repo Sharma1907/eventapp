@@ -1,0 +1,91 @@
+{% extends "panel/base.html" %}
+{% block title %}Conference Settings — ETD 2026 Admin{% endblock %}
+{% block page_title %}Conference Settings{% endblock %}
+{% block page_subtitle %}Branding and info shown across the mobile app{% endblock %}
+
+{% block content %}
+{% if messages %}
+  {% for m in messages %}
+    <div class="alert alert-{{ m.tags|default:'success' }}">
+      <i class="fas fa-check-circle"></i> {{ m }}
+    </div>
+  {% endfor %}
+{% endif %}
+
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <div class="content-grid" style="grid-template-columns: 1fr 340px;">
+
+    <!-- LEFT -->
+    <div style="display:flex; flex-direction:column; gap:24px;">
+
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-info-circle" style="color:var(--primary);margin-right:8px;"></i>Basic Info</h3>
+        </div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:16px;">
+          <div>
+            <label class="form-label">Conference Name *</label>
+            <input class="form-control" name="name" value="{{ setting.name }}" required maxlength="200">
+          </div>
+          <div>
+            <label class="form-label">Tagline / Location</label>
+            <input class="form-control" name="tagline" value="{{ setting.tagline }}" maxlength="300"
+                   placeholder="IIT Delhi, New Delhi">
+          </div>
+          <div>
+            <label class="form-label">Venue</label>
+            <input class="form-control" name="venue" value="{{ setting.venue }}" maxlength="300">
+          </div>
+          <div>
+            <label class="form-label">Website URL</label>
+            <input class="form-control" type="url" name="website_url" value="{{ setting.website_url }}">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div>
+              <label class="form-label">Start Date</label>
+              <input class="form-control" type="date" name="start_date"
+                     value="{{ setting.start_date|date:'Y-m-d' }}">
+            </div>
+            <div>
+              <label class="form-label">End Date</label>
+              <input class="form-control" type="date" name="end_date"
+                     value="{{ setting.end_date|date:'Y-m-d' }}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: logo -->
+    <div style="display:flex;flex-direction:column;gap:24px;">
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-image" style="color:var(--primary);margin-right:8px;"></i>Logo</h3>
+        </div>
+        <div class="card-body" style="text-align:center;">
+          {% if setting.logo %}
+            <img src="{{ setting.logo.url }}" alt="logo"
+                 style="max-width:160px;max-height:160px;object-fit:contain;border-radius:12px;margin-bottom:16px;border:1px solid var(--border);">
+          {% else %}
+            <div style="width:120px;height:120px;border-radius:16px;background:var(--primary-light);
+                        display:flex;align-items:center;justify-content:center;
+                        margin:0 auto 16px;font-size:40px;font-weight:800;color:var(--primary);">E</div>
+          {% endif %}
+          <label class="form-label" style="text-align:left;display:block;">Upload New Logo</label>
+          <input class="form-control" type="file" name="logo" accept="image/*">
+          <p style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">
+            PNG/JPG, shown in mobile app header. Transparent PNG recommended.
+          </p>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
+        <i class="fas fa-save"></i> Save Settings
+      </button>
+    </div>
+
+  </div>
+</form>
+{% endblock %}
