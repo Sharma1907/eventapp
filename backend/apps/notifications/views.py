@@ -74,13 +74,56 @@ def send_notification(request):
 def notification_history(request):
     if not hasattr(request.user, 'role') or request.user.role not in ('super_admin', 'mgmt_admin'):
         return Response({'error': 'Permission denied'}, status=403)
-    notifs = Notification.objects.all()[:50]
-    return Response({'notifications': [{
-        'id': str(n.id), 'title': n.title, 'body': n.body,
-        'status': n.status, 'sent_count': n.sent_count,
-        'delivered_count': n.delivered_count, 'read_count': n.read_count,
-        'created_at': n.created_at.isoformat(),
-    } for n in notifs]})
+    notifs = Notification.objects.prefetch_related('attachments').all()[:50]
+    result = []
+    for n in notifs:
+        cover = None
+        if n.cover_image:
+            try:    cover = request.build_absolute_uri(n.cover_image.url)
+            except: pass
+        result.append({
+            'id':              str(n.id),
+            'title':           n.title,
+            'body':            n.body,
+            'status':          n.status,
+            'sent_count':      n.sent_count,
+            'failed_count':    n.failed_count,
+            'delivered_count': n.delivered_count,
+            'read_count':      n.read_count,
+            'target_type':     n.target_type,
+            'target_role':     n.target_role,
+            'cover_image_url': cover,
+            'attachment_count': n.attachments.count(),
+            'created_at':      n.created_at.isoformat(),
+        })
+    return Response({'notifications': result})
+
+
+@api_view(['PATCH', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def notification_detail(request, pk):
+    if not hasattr(request.user, 'role') or request.user.role not in ('super_admin', 'mgmt_admin'):
+        return Response({'error': 'Permission denied'}, status=403)
+    try:
+        from .models import Notification as N
+        notif = N.objects.get(pk=pk)
+    except N.DoesNotExist:
+        return Response({'error': 'Not found'}, status=404)
+
+    if request.method == 'DELETE':
+        notif.delete()
+        return Response({'success': True})
+
+    # PATCH — title/body only (file uploads stay web-only for now)
+    # ceiling: cover_image + attachment upload via multipart not exposed on mobile
+    title = request.data.get('title', '').strip()
+    body  = request.data.get('body',  '').strip()
+    if not title or not body:
+        return Response({'error': 'title and body required'}, status=400)
+    notif.title = title
+    notif.body  = body
+    notif.save(update_fields=['title', 'body'])
+    return Response({'success': True, 'id': str(notif.id), 'title': notif.title, 'body': notif.body})
 
 
 @api_view(['GET'])

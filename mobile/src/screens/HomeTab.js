@@ -13,6 +13,8 @@ const PAD = SPACE.xl;
 
 const QUICK = [
   { icon: 'calendar-outline',    label: 'Schedule',    color: COLORS.brand,   bg: COLORS.brandLight   },
+  { icon: 'ribbon-outline',      label: 'Sponsors',    color: COLORS.brand,   bg: COLORS.brandLight,  action: 'sponsors' },
+  { icon: 'mic-outline',         label: 'Speakers',    color: COLORS.purple,  bg: COLORS.purpleLight, action: 'speakers' },
   { icon: 'camera-outline',      label: 'Photos',      color: COLORS.success, bg: COLORS.successLight },
   { icon: 'stats-chart-outline', label: 'Polls',       color: COLORS.accent,  bg: COLORS.accentLight  },
   { icon: 'newspaper-outline',   label: 'Feed',        color: COLORS.purple,  bg: COLORS.purpleLight  },
@@ -69,7 +71,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export default function HomeTab({ user, tokens, onOpenNotifications }) {
+export default function HomeTab({ user, tokens, onOpenNotifications, onOpenSponsors, onOpenSpeakers }) {
   const [unread, setUnread] = useState(0);
   const [points, setPoints] = useState(0);
   const [rank, setRank] = useState(0);
@@ -189,7 +191,15 @@ export default function HomeTab({ user, tokens, onOpenNotifications }) {
           contentContainerStyle={{ paddingHorizontal: PAD, gap: SPACE.md, paddingBottom: SPACE.xs }}
           style={{ marginBottom: SPACE.xl }}>
           {QUICK.map(q => (
-            <TouchableOpacity key={q.label} style={g.quickCard} activeOpacity={0.75}>
+            <TouchableOpacity
+              key={q.label}
+              style={g.quickCard}
+              activeOpacity={0.75}
+              onPress={() => {
+                if (q.action === 'sponsors' && onOpenSponsors) onOpenSponsors();
+                if (q.action === 'speakers' && onOpenSpeakers) onOpenSpeakers();
+              }}
+            >
               <View style={[g.quickIcon, { backgroundColor: q.bg }]}>
                 <Ionicons name={q.icon} size={22} color={q.color} />
               </View>

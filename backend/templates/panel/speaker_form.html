@@ -1,0 +1,318 @@
+{% extends "panel/base.html" %}
+{% block title %}{{ action }} Speaker — ETD 2026 Admin{% endblock %}
+{% block page_title %}{{ action }} Speaker{% endblock %}
+{% block page_subtitle %}{% if speaker %}Editing {{ speaker.full_name }}{% else %}Fill in the details below{% endif %}{% endblock %}
+
+{% block content %}
+<style>
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.form-group { display:flex; flex-direction:column; }
+.form-group.full { grid-column:1/-1; }
+.form-section { margin-bottom:28px; }
+.form-section-title {
+    font-size:13px; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.8px; color:var(--text-tertiary);
+    margin-bottom:16px; padding-bottom:8px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:8px;
+}
+.form-section-title i { color:var(--primary); }
+.photo-preview {
+    width:96px; height:96px; border-radius:14px; object-fit:cover;
+    border:2px solid var(--border); margin-bottom:10px;
+}
+.photo-initials {
+    width:96px; height:96px; border-radius:14px;
+    background:var(--primary); display:flex; align-items:center;
+    justify-content:center; font-size:32px; font-weight:800;
+    color:#fff; margin-bottom:10px;
+}
+.toggle-row { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--bg); }
+.toggle-row:last-child { border-bottom:none; }
+.toggle-label { flex:1; }
+.toggle-label span { display:block; font-size:14px; font-weight:600; color:var(--text); }
+.toggle-label small { font-size:12px; color:var(--text-tertiary); }
+.toggle { width:44px; height:24px; background:var(--border); border-radius:12px; position:relative; cursor:pointer; transition:background 0.2s; }
+.toggle.on { background:var(--primary); }
+.toggle-thumb { width:18px; height:18px; background:#fff; border-radius:9px; position:absolute; top:3px; left:3px; transition:left 0.2s; box-shadow:0 1px 4px rgba(0,0,0,0.2); }
+.toggle.on .toggle-thumb { left:23px; }
+input[type=checkbox] { width:18px; height:18px; accent-color:var(--primary); cursor:pointer; }
+
+/* Talk cards */
+.talk-card {
+    background:var(--bg); border-radius:12px; padding:16px;
+    border:1px solid var(--border); margin-bottom:12px; position:relative;
+}
+.talk-card-title { font-size:14px; font-weight:600; color:var(--text); }
+.talk-card-meta { font-size:12px; color:var(--text-tertiary); margin-top:4px; }
+.talk-del-btn {
+    position:absolute; top:12px; right:12px;
+    background:var(--danger-light); color:var(--danger);
+    border:none; border-radius:8px; padding:5px 10px;
+    font-size:11px; font-weight:700; cursor:pointer;
+}
+.talk-del-btn:hover { background:var(--danger); color:#fff; }
+.add-talk-section {
+    background:var(--bg); border-radius:14px; padding:20px;
+    border:1px dashed var(--border); margin-top:8px;
+}
+.add-talk-title { font-size:14px; font-weight:700; color:var(--text-secondary); margin-bottom:14px; }
+</style>
+
+{% if messages %}
+  {% for m in messages %}
+    <div class="alert alert-{{ m.tags|default:'info' }}">{{ m }}</div>
+  {% endfor %}
+{% endif %}
+
+<div style="display:grid;grid-template-columns:1fr 340px;gap:24px;align-items:start;">
+
+  <!-- Left: Main form -->
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    <!-- IDENTITY -->
+    <div class="card form-section">
+      <div class="card-header">
+        <h3><i class="fas fa-user" style="margin-right:8px;color:var(--primary);"></i>Identity</h3>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+
+          <div class="form-group">
+            <label class="form-label">Title</label>
+            <select name="title" class="form-control">
+              {% for val,lab in title_choices %}
+                <option value="{{ val }}" {% if speaker and speaker.title == val %}selected{% endif %}>{{ lab }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Display Order</label>
+            <input type="number" name="display_order" class="form-control" min="0"
+                   value="{{ speaker.display_order|default:0 }}" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">First Name *</label>
+            <input type="text" name="first_name" class="form-control" required
+                   value="{{ speaker.first_name|default:'' }}" placeholder="e.g. Edward" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Last Name *</label>
+            <input type="text" name="last_name" class="form-control" required
+                   value="{{ speaker.last_name|default:'' }}" placeholder="e.g. Fox" />
+          </div>
+
+          <div class="form-group full">
+            <label class="form-label">Designation</label>
+            <input type="text" name="designation" class="form-control"
+                   value="{{ speaker.designation|default:'' }}"
+                   placeholder="e.g. Professor of Computer Science" />
+          </div>
+
+          <div class="form-group full">
+            <label class="form-label">Institute / Organisation</label>
+            <input type="text" name="institute" class="form-control"
+                   value="{{ speaker.institute|default:'' }}"
+                   placeholder="e.g. Virginia Tech, USA" />
+          </div>
+
+          <div class="form-group full">
+            <label class="form-label">Country</label>
+            <input type="text" name="country" class="form-control"
+                   value="{{ speaker.country|default:'' }}" placeholder="e.g. India" />
+          </div>
+
+          <div class="form-group full">
+            <label class="form-label">Biography</label>
+            <textarea name="bio" class="form-control" rows="5"
+                      placeholder="Brief professional bio...">{{ speaker.bio|default:'' }}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHOTO -->
+    <div class="card form-section">
+      <div class="card-header">
+        <h3><i class="fas fa-image" style="margin-right:8px;color:var(--primary);"></i>Photo</h3>
+      </div>
+      <div class="card-body">
+        {% if speaker and speaker.photo %}
+          <img src="{{ speaker.photo.url }}" class="photo-preview" alt="Current photo" />
+          <p style="font-size:12px;color:var(--text-tertiary);margin-bottom:10px;">Current photo — upload a new one to replace.</p>
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" name="clear_photo" /> Remove current photo
+          </label>
+        {% elif speaker %}
+          <div class="photo-initials">{{ speaker.initials }}</div>
+          <p style="font-size:12px;color:var(--text-tertiary);margin-bottom:10px;">No photo — showing initials fallback.</p>
+        {% endif %}
+        <label class="form-label">Upload Photo (JPG / PNG, recommended 400×400)</label>
+        <input type="file" name="photo" class="form-control" accept="image/*" />
+      </div>
+    </div>
+
+    <!-- CONTACT & SOCIAL -->
+    <div class="card form-section">
+      <div class="card-header">
+        <h3><i class="fas fa-link" style="margin-right:8px;color:var(--primary);"></i>Links & Contact</h3>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="form-group full">
+            <label class="form-label"><i class="fas fa-envelope" style="margin-right:6px;color:var(--primary);"></i>Email</label>
+            <input type="email" name="email" class="form-control"
+                   value="{{ speaker.email|default:'' }}" placeholder="speaker@example.com" />
+          </div>
+          <div class="form-group full">
+            <label class="form-label"><i class="fas fa-globe" style="margin-right:6px;color:var(--primary);"></i>Website / Personal Page</label>
+            <input type="url" name="website_url" class="form-control"
+                   value="{{ speaker.website_url|default:'' }}" placeholder="https://..." />
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fab fa-linkedin" style="margin-right:6px;color:#0a66c2;"></i>LinkedIn</label>
+            <input type="url" name="linkedin_url" class="form-control"
+                   value="{{ speaker.linkedin_url|default:'' }}" placeholder="https://linkedin.com/in/..." />
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fab fa-twitter" style="margin-right:6px;color:#1da1f2;"></i>Twitter / X</label>
+            <input type="url" name="twitter_url" class="form-control"
+                   value="{{ speaker.twitter_url|default:'' }}" placeholder="https://twitter.com/..." />
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-graduation-cap" style="margin-right:6px;color:#4285f4;"></i>Google Scholar</label>
+            <input type="url" name="google_scholar_url" class="form-control"
+                   value="{{ speaker.google_scholar_url|default:'' }}" placeholder="https://scholar.google.com/..." />
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fab fa-researchgate" style="margin-right:6px;color:#00ccbb;"></i>ResearchGate</label>
+            <input type="url" name="researchgate_url" class="form-control"
+                   value="{{ speaker.researchgate_url|default:'' }}" placeholder="https://researchgate.net/..." />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FLAGS -->
+    <div class="card form-section">
+      <div class="card-header"><h3><i class="fas fa-sliders" style="margin-right:8px;color:var(--primary);"></i>Settings</h3></div>
+      <div class="card-body">
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <span>Keynote Speaker</span>
+            <small>Appears highlighted in the Keynote section</small>
+          </div>
+          <input type="checkbox" name="is_keynote" {% if speaker and speaker.is_keynote %}checked{% endif %} />
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <span>Active / Visible</span>
+            <small>Inactive speakers are hidden from the app</small>
+          </div>
+          <input type="checkbox" name="is_active" {% if not speaker or speaker.is_active %}checked{% endif %} />
+        </div>
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <div style="display:flex;gap:12px;margin-top:4px;">
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-save"></i> {{ action }} Speaker
+      </button>
+      <a href="{% url 'speakers_panel' %}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Cancel
+      </a>
+    </div>
+  </form>
+
+  <!-- Right: Talks panel (only on edit) -->
+  <div>
+    {% if speaker %}
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header">
+        <h3><i class="fas fa-microphone" style="margin-right:8px;color:var(--primary);"></i>Talks</h3>
+        <span class="badge badge-info">{{ talks|length }} talk{{ talks|length|pluralize }}</span>
+      </div>
+      <div class="card-body">
+        {% if talks %}
+          {% for talk in talks %}
+          <div class="talk-card">
+            <div class="talk-card-title">{{ talk.title }}</div>
+            <div class="talk-card-meta">
+              {% if talk.track %}🏷 {{ talk.track }}{% endif %}
+              {% if talk.talk_date %} · 📅 {{ talk.talk_date }}{% endif %}
+              {% if talk.talk_time %} · 🕐 {{ talk.talk_time }}{% endif %}
+            </div>
+            {% if talk.abstract %}
+            <p style="font-size:12px;color:var(--text-tertiary);margin-top:6px;line-height:1.5;">{{ talk.abstract|truncatewords:30 }}</p>
+            {% endif %}
+            <form method="post" action="{% url 'talk_delete' talk.pk %}"
+                  onsubmit="return confirm('Remove this talk?');">
+              {% csrf_token %}
+              <button type="submit" class="talk-del-btn"><i class="fas fa-times"></i> Remove</button>
+            </form>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p style="font-size:13px;color:var(--text-tertiary);text-align:center;padding:16px 0;">No talks added yet.</p>
+        {% endif %}
+
+        <!-- Add talk inline -->
+        <div class="add-talk-section">
+          <div class="add-talk-title"><i class="fas fa-plus" style="margin-right:6px;color:var(--primary);"></i>Add a Talk</div>
+          <form method="post" action="{% url 'talk_create' speaker.pk %}">
+            {% csrf_token %}
+            <div class="form-group" style="margin-bottom:10px;">
+              <label class="form-label">Talk Title *</label>
+              <input type="text" name="title" class="form-control" required placeholder="e.g. ETDs in the AI Era" />
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+              <div class="form-group">
+                <label class="form-label">Track</label>
+                <input type="text" name="track" class="form-control" placeholder="e.g. Keynote" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Date</label>
+                <input type="date" name="talk_date" class="form-control" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Time</label>
+                <input type="text" name="talk_time" class="form-control" placeholder="10:00 AM" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Order</label>
+                <input type="number" name="display_order" class="form-control" value="0" min="0" />
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+              <label class="form-label">Abstract (optional)</label>
+              <textarea name="abstract" class="form-control" rows="3" placeholder="Brief description..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm" style="width:100%;">
+              <i class="fas fa-plus"></i> Add Talk
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card">
+      <div class="card-body" style="text-align:center;padding:32px;color:var(--text-tertiary);">
+        <i class="fas fa-microphone-slash" style="font-size:32px;margin-bottom:12px;opacity:0.3;display:block;"></i>
+        <p style="font-size:13px;">Save the speaker first, then you can add their talks.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div><!-- end grid -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Pass title choices to template context
+</script>
+{% endblock %}

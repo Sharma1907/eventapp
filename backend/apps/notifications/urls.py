@@ -7,8 +7,9 @@ urlpatterns = [
     path('unregister-token/', views.unregister_token,    name='unregister_token'),
 
     # Admin endpoints
-    path('send/',             views.send_notification,   name='send_notification'),
+    path('send/',             views.send_notification,    name='send_notification'),
     path('history/',          views.notification_history, name='notification_history'),
+    path('<uuid:pk>/',        views.notification_detail,  name='notification_detail'),
 
     # App endpoints
     path('my/',               views.my_notifications,    name='my_notifications'),

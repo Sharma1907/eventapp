@@ -1,0 +1,85 @@
+{% extends 'panel/base.html' %}
+
+{% block title %}Sponsors — ETD 2026 Admin{% endblock %}
+{% block page_title %}Sponsors{% endblock %}
+{% block page_subtitle %}Manage sponsor logos, tiers and details shown in the mobile app{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex;gap:12px;align-items:center;">
+        <div style="font-size:13px;color:var(--text-tertiary);">
+            <strong style="color:var(--text);font-size:16px;">{{ total }}</strong> total ·
+            <strong style="color:var(--success);font-size:16px;">{{ active_count }}</strong> active
+        </div>
+    </div>
+    <a href="{% url 'sponsor_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Add Sponsor
+    </a>
+</div>
+
+{% if messages %}
+    {% for m in messages %}
+        <div class="alert alert-{% if m.tags == 'error' %}error{% elif m.tags == 'success' %}success{% else %}warning{% endif %}">
+            <i class="fas fa-{% if m.tags == 'error' %}circle-exclamation{% else %}circle-check{% endif %}"></i>
+            {{ m }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+{% for tier_key, data in grouped.items %}
+    <div class="card" style="margin-bottom:24px;">
+        <div class="card-header">
+            <h3>
+                {% if tier_key == 'platinum' %}<i class="fas fa-gem" style="color:#8b5cf6;margin-right:6px;"></i>
+                {% elif tier_key == 'silver' %}<i class="fas fa-medal" style="color:#94a3b8;margin-right:6px;"></i>
+                {% elif tier_key == 'bronze' %}<i class="fas fa-award" style="color:#d97706;margin-right:6px;"></i>
+                {% else %}<i class="fas fa-landmark" style="color:#1A73E8;margin-right:6px;"></i>{% endif %}
+                {{ data.label }}
+                <span style="color:var(--text-tertiary);font-weight:500;font-size:13px;margin-left:6px;">
+                    ({{ data.items|length }})
+                </span>
+            </h3>
+        </div>
+        <div class="card-body">
+            {% if data.items %}
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;">
+                    {% for s in data.items %}
+                        <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:white;{% if not s.is_active %}opacity:0.5;{% endif %}">
+                            <div style="height:110px;background:#f8fafc;display:flex;align-items:center;justify-content:center;padding:12px;">
+                                {% if s.logo %}
+                                    <img src="{{ s.logo.url }}" alt="{{ s.name }}" style="max-width:100%;max-height:100%;object-fit:contain;">
+                                {% else %}
+                                    <i class="fas fa-image" style="font-size:32px;color:var(--text-tertiary);"></i>
+                                {% endif %}
+                            </div>
+                            <div style="padding:12px;">
+                                <h4 style="font-size:14px;font-weight:700;margin-bottom:4px;">{{ s.name }}</h4>
+                                <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;">
+                                    Order: {{ s.display_order }}
+                                    {% if not s.is_active %}· <span style="color:var(--danger);font-weight:700;">HIDDEN</span>{% endif %}
+                                </div>
+                                <div style="display:flex;gap:6px;">
+                                    <a href="{% url 'sponsor_edit' s.id %}" class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;">
+                                        <i class="fas fa-pen"></i> Edit
+                                    </a>
+                                    <form method="post" action="{% url 'sponsor_delete' s.id %}" onsubmit="return confirm('Delete {{ s.name }}?');" style="flex:0;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-danger btn-sm" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state" style="padding:24px;">
+                    <p style="margin:0;">No sponsors in this tier yet.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endfor %}
+
+{% endblock %}

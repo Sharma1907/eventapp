@@ -18,6 +18,13 @@ urlpatterns = [
     path('participants/remove/<uuid:pk>/',  admin_views.participant_delete,      name='participant_delete'),
     path('participants/template/',          admin_views.participants_template,   name='participants_template'),
 
+    # User management (warn / suspend)
+    path('users/manage/',                       admin_views.users_manage,      name='users_manage'),
+    path('users/<uuid:pk>/warn/',               admin_views.user_warn,         name='user_warn'),
+    path('users/<uuid:pk>/suspend/',            admin_views.user_suspend,      name='user_suspend'),
+    path('users/<uuid:pk>/unsuspend/',          admin_views.user_unsuspend,    name='user_unsuspend'),
+    path('users/<uuid:pk>/clear-warning/',      admin_views.user_clear_warning,name='user_clear_warning'),
+
     # Forgot password (public)
     path('password-reset/',                          admin_views.password_reset_request, name='password_reset_request'),
     path('password-reset-confirm/<uidb64>/<token>/', admin_views.password_reset_confirm, name='password_reset_confirm'),

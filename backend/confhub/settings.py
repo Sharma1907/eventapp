@@ -31,6 +31,8 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     'apps.accounts',
     'apps.notifications',
+    'apps.sponsors',
+    'apps.speakers',
     'apps.conferences',
     'apps.events',
     'apps.photos',

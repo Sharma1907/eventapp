@@ -1,0 +1,227 @@
+{% extends "panel/base.html" %}
+{% block title %}User Management — ETD 2026{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block page_subtitle %}Warn or suspend users{% endblock %}
+
+{% block content %}
+{% for m in messages %}
+<div class="alert alert-{{ m.tags|default:'success' }}"><i class="fas fa-check-circle"></i> {{ m }}</div>
+{% endfor %}
+
+<!-- stats -->
+<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <div class="stat-icon" style="background:var(--primary-light);color:var(--primary);"><i class="fas fa-users"></i></div>
+    </div>
+    <div class="stat-value">{{ total }}</div>
+    <div class="stat-label">Total Users</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <div class="stat-icon" style="background:var(--warning-light);color:var(--warning);"><i class="fas fa-exclamation-triangle"></i></div>
+    </div>
+    <div class="stat-value">{{ warned_count }}</div>
+    <div class="stat-label">Warned</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-header">
+      <div class="stat-icon" style="background:var(--danger-light);color:var(--danger);"><i class="fas fa-ban"></i></div>
+    </div>
+    <div class="stat-value">{{ suspended_count }}</div>
+    <div class="stat-label">Suspended</div>
+  </div>
+</div>
+
+<!-- filters -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-body" style="padding:16px;">
+    <form method="GET" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <input class="form-control" name="search" value="{{ search }}" placeholder="Search name, email, reg ID…" style="max-width:300px;">
+      <select class="form-control" name="role" style="max-width:180px;">
+        <option value="">All Roles</option>
+        {% for val, label in roles %}
+          <option value="{{ val }}" {% if role_filter == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-search"></i> Filter</button>
+      {% if search or role_filter %}
+        <a href="{% url 'users_manage' %}" class="btn btn-secondary btn-sm"><i class="fas fa-times"></i> Clear</a>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<!-- user table -->
+<div class="card">
+  <div class="card-header">
+    <h3><i class="fas fa-shield-halved" style="color:var(--primary);margin-right:8px;"></i>All Users</h3>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Warning</th>
+            <th>Joined</th>
+            <th style="width:220px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr style="{% if not u.is_active %}background:rgba(239,68,68,0.04);{% elif u.warning_note %}background:rgba(245,158,11,0.04);{% endif %}">
+            <td>
+              <div style="font-weight:600;color:var(--text);">{{ u.get_full_name|default:u.email }}</div>
+              {% if u.registration_id %}<div style="font-size:11px;color:var(--primary);margin-top:2px;">{{ u.registration_id }}</div>{% endif %}
+            </td>
+            <td style="font-size:13px;">{{ u.email }}</td>
+            <td>
+              {% if u.role == 'super_admin' %}<span class="badge badge-danger">Super Admin</span>
+              {% elif u.role == 'mgmt_admin' %}<span class="badge badge-warning">Mgmt Admin</span>
+              {% elif u.role == 'speaker' %}<span class="badge badge-info">Speaker</span>
+              {% elif u.role == 'staff' %}<span class="badge badge-success">Staff</span>
+              {% elif u.role == 'team_head' %}<span class="badge badge-warning">Team Head</span>
+              {% else %}<span class="badge badge-info">Participant</span>{% endif %}
+            </td>
+            <td>
+              {% if not u.is_active %}
+                <span class="badge badge-danger">Suspended</span>
+                {% if u.suspended_reason %}<div style="font-size:11px;color:var(--danger);margin-top:4px;max-width:160px;">{{ u.suspended_reason|truncatechars:60 }}</div>{% endif %}
+              {% else %}
+                <span class="badge badge-success">Active</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if u.warning_note %}
+                <div style="font-size:12px;color:var(--warning);max-width:180px;" title="{{ u.warning_note }}">
+                  <i class="fas fa-exclamation-triangle"></i> {{ u.warning_note|truncatechars:40 }}
+                </div>
+              {% else %}
+                <span style="color:var(--text-tertiary);">—</span>
+              {% endif %}
+            </td>
+            <td style="font-size:12px;color:var(--text-tertiary);white-space:nowrap;">{{ u.created_at|date:"d M Y" }}</td>
+            <td>
+              {% if u.role not in 'super_admin,mgmt_admin' %}
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-sm" style="padding:5px 10px;background:var(--warning-light);color:var(--warning);border:1px solid var(--warning);border-radius:8px;cursor:pointer;font-size:12px;" onclick="openModal('warn','{{ u.pk }}','{{ u.get_full_name|escapejs }}','{{ u.warning_note|escapejs }}')">
+                  <i class="fas fa-exclamation-triangle"></i> Warn
+                </button>
+                {% if u.is_active %}
+                <button type="button" class="btn btn-sm" style="padding:5px 10px;background:none;border:1px solid var(--danger);color:var(--danger);border-radius:8px;cursor:pointer;font-size:12px;" onclick="openModal('suspend','{{ u.pk }}','{{ u.get_full_name|escapejs }}','')">
+                  <i class="fas fa-ban"></i> Suspend
+                </button>
+                {% else %}
+                <form method="post" action="{% url 'user_unsuspend' u.pk %}" style="margin:0;">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm" style="padding:5px 10px;background:var(--success-light);color:var(--success);border:1px solid var(--success);border-radius:8px;cursor:pointer;font-size:12px;" onclick="return confirm('Restore {{ u.get_full_name|escapejs }}?')">
+                    <i class="fas fa-check-circle"></i> Restore
+                  </button>
+                </form>
+                {% endif %}
+                {% if u.warning_note %}
+                <form method="post" action="{% url 'user_clear_warning' u.pk %}" style="margin:0;">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-sm" style="padding:5px 10px;background:none;border:1px solid var(--text-tertiary);color:var(--text-tertiary);border-radius:8px;cursor:pointer;font-size:12px;" onclick="return confirm('Clear warning for {{ u.get_full_name|escapejs }}?')">
+                    <i class="fas fa-times"></i> Clear
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+              {% else %}
+                <span style="font-size:12px;color:var(--text-tertiary);"><i class="fas fa-lock"></i> Protected</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7">
+              <div class="empty-state">
+                <i class="fas fa-users"></i>
+                <h3>No users found</h3>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="actionModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:28px;max-width:460px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+    <h3 id="modalTitle" style="margin:0 0 8px;font-size:18px;"></h3>
+    <p id="modalDesc" style="color:var(--text-secondary);font-size:14px;margin:0 0 20px;"></p>
+    <div id="existingWarning" style="display:none;background:var(--warning-light);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--warning);">
+      <i class="fas fa-exclamation-triangle"></i> <span id="existingWarningText"></span>
+    </div>
+    <form id="modalForm" method="POST">
+      <input type="hidden" name="csrfmiddlewaretoken" value="">
+      <div style="margin-bottom:16px;">
+        <label class="form-label" id="modalInputLabel">Note</label>
+        <textarea class="form-control" id="modalInput" name="" rows="3" required placeholder="" style="resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()" style="flex:1;">Cancel</button>
+        <button type="submit" id="modalSubmit" class="btn" style="flex:1;">Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const csrf = '{{ csrf_token }}';
+function openModal(action, pk, name, existing) {
+  const modal = document.getElementById('actionModal');
+  const form = document.getElementById('modalForm');
+  const title = document.getElementById('modalTitle');
+  const desc = document.getElementById('modalDesc');
+  const input = document.getElementById('modalInput');
+  const label = document.getElementById('modalInputLabel');
+  const submit = document.getElementById('modalSubmit');
+  const ew = document.getElementById('existingWarning');
+  const ewt = document.getElementById('existingWarningText');
+  form.querySelector('[name=csrfmiddlewaretoken]').value = csrf;
+  if (action === 'warn') {
+    title.textContent = 'Warn ' + name;
+    desc.textContent = 'Send a warning notification to this user.';
+    label.textContent = 'Warning message *';
+    input.name = 'note';
+    input.placeholder = 'Explain the warning…';
+    input.value = '';
+    submit.textContent = 'Send Warning';
+    submit.style.background = 'var(--warning)';
+    submit.style.color = '#fff';
+    submit.style.border = 'none';
+    form.action = '/panel/users/' + pk + '/warn/';
+    if (existing) { ew.style.display = 'block'; ewt.textContent = 'Previous: ' + existing; }
+    else { ew.style.display = 'none'; }
+  } else {
+    title.textContent = 'Suspend ' + name;
+    desc.textContent = 'This will block login and send a suspension email.';
+    label.textContent = 'Suspension reason *';
+    input.name = 'reason';
+    input.placeholder = 'Reason for suspension…';
+    input.value = '';
+    submit.textContent = 'Suspend Account';
+    submit.style.background = 'var(--danger)';
+    submit.style.color = '#fff';
+    submit.style.border = 'none';
+    form.action = '/panel/users/' + pk + '/suspend/';
+    ew.style.display = 'none';
+  }
+  modal.style.display = 'flex';
+  input.focus();
+}
+function closeModal() { document.getElementById('actionModal').style.display = 'none'; }
+document.getElementById('actionModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+</script>
+{% endblock %}

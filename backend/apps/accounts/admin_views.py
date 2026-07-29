@@ -573,3 +573,159 @@ def password_reset_confirm(request, uidb64, token):
         'uidb64': uidb64,
         'token': token,
     })
+
+
+# ── user management (warn / suspend / unsuspend) ──────────────────────────
+
+@login_required(login_url='/panel/login/')
+def users_manage(request):
+    """List ALL users (not just participants) with status indicators."""
+    from django.db.models import Q
+
+    search = request.GET.get('search', '').strip()
+    role   = request.GET.get('role', '').strip()
+
+    qs = User.objects.all().order_by('role', 'first_name', 'last_name')
+    if search:
+        qs = qs.filter(
+            Q(first_name__icontains=search) |
+            Q(last_name__icontains=search)  |
+            Q(email__icontains=search)      |
+            Q(registration_id__icontains=search)
+        )
+    if role:
+        qs = qs.filter(role=role)
+
+    roles = User.Role.choices
+
+    return render(request, 'panel/users_manage.html', {
+        'users': qs,
+        'total': qs.count(),
+        'suspended_count': qs.filter(is_active=False).count(),
+        'warned_count': qs.exclude(warning_note='').count(),
+        'search': search,
+        'role_filter': role,
+        'roles': roles,
+    })
+
+
+@login_required(login_url='/panel/login/')
+def user_warn(request, pk):
+    """Warn a user — POST with note."""
+    user_target = get_object_or_404(User, pk=pk)
+    if user_target.role in ('super_admin', 'mgmt_admin'):
+        messages.error(request, 'Cannot warn admin accounts.')
+        return redirect('users_manage')
+
+    if request.method == 'POST':
+        note = request.POST.get('note', '').strip()
+        if not note:
+            messages.error(request, 'Warning note is required.')
+            return redirect('users_manage')
+
+        user_target.warning_note = note
+        user_target.save(update_fields=['warning_note'])
+
+        # Send push notification
+        try:
+            from apps.notifications.models import Notification as Notif
+            from apps.notifications import fcm
+            notif = Notif.objects.create(
+                title='\u26a0\ufe0f Warning from Admin',
+                body=note,
+                target_type='user', target_user=user_target,
+                sent_by=request.user, status='pending',
+                data={'type': 'admin_warning'},
+            )
+            s, f, bad = fcm.send_to_user(user_target, notif.title, notif.body, notif.data, notif)
+            notif.status = 'sent'; notif.sent_count = s; notif.failed_count = f; notif.save()
+        except Exception:
+            pass
+
+        messages.success(request, f'Warning sent to {user_target.get_full_name()}.')
+
+    return redirect('users_manage')
+
+
+@login_required(login_url='/panel/login/')
+def user_suspend(request, pk):
+    """Suspend a user — POST with reason."""
+    user_target = get_object_or_404(User, pk=pk)
+    if user_target.role in ('super_admin', 'mgmt_admin'):
+        messages.error(request, 'Cannot suspend admin accounts.')
+        return redirect('users_manage')
+
+    if request.method == 'POST':
+        reason = request.POST.get('reason', '').strip() or 'Account suspended by admin.'
+        user_target.is_active = False
+        user_target.suspended_reason = reason
+        user_target.save(update_fields=['is_active', 'suspended_reason'])
+
+        # Deactivate device tokens
+        try:
+            from apps.notifications.models import DeviceToken
+            DeviceToken.objects.filter(user=user_target).update(is_active=False)
+        except Exception:
+            pass
+
+        # Send email
+        try:
+            send_mail(
+                subject='ETD 2026 — Account Suspended',
+                message=(
+                    f"Dear {user_target.get_full_name() or user_target.email},\n\n"
+                    f"Your ETD 2026 account has been suspended.\n\n"
+                    f"Reason: {reason}\n\n"
+                    f"If you believe this is a mistake, please contact the organizing team.\n\n"
+                    f"Regards,\nETD 2026 Organising Committee\nIIT Delhi"
+                ),
+                from_email=None,
+                recipient_list=[user_target.email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass
+
+        messages.success(request, f'{user_target.get_full_name()} has been suspended.')
+
+    return redirect('users_manage')
+
+
+@login_required(login_url='/panel/login/')
+def user_unsuspend(request, pk):
+    """Restore a suspended user."""
+    user_target = get_object_or_404(User, pk=pk)
+    if request.method == 'POST':
+        user_target.is_active = True
+        user_target.suspended_reason = ''
+        user_target.save(update_fields=['is_active', 'suspended_reason'])
+        messages.success(request, f'{user_target.get_full_name()} has been restored.')
+    return redirect('users_manage')
+
+
+@login_required(login_url='/panel/login/')
+def user_clear_warning(request, pk):
+    """Clear warning note from a user."""
+    user_target = get_object_or_404(User, pk=pk)
+    if request.method == 'POST':
+        user_target.warning_note = ''
+        user_target.save(update_fields=['warning_note'])
+        messages.success(request, f'Warning cleared for {user_target.get_full_name()}.')
+    return redirect('users_manage')
+
+
+# ── admin_required decorator ───────────────────────────────────────────────
+
+from functools import wraps
+
+def admin_required(view_func):
+    """Allow only authenticated super_admin or mgmt_admin users."""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('/panel/login/')
+        if request.user.role not in ('super_admin', 'mgmt_admin'):
+            messages.error(request, 'You do not have permission to access this page.')
+            return redirect('admin_dashboard')
+        return view_func(request, *args, **kwargs)
+    return wrapper

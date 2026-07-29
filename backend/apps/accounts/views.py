@@ -137,3 +137,141 @@ def logout_view(request):
         'success': True,
         'message': 'Logged out successfully.',
     })
+
+
+ADMIN_ROLES = ('super_admin', 'mgmt_admin')
+
+
+def _is_admin(user):
+    return hasattr(user, 'role') and user.role in ADMIN_ROLES
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_list_view(request):
+    """All users — admin only. Supports ?search= and ?role= filters."""
+    if not _is_admin(request.user):
+        return Response({'error': 'Permission denied'}, status=403)
+
+    qs = User.objects.all().order_by('role', 'first_name', 'last_name')
+
+    search = request.query_params.get('search', '').strip()
+    role   = request.query_params.get('role', '').strip()
+    if search:
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(first_name__icontains=search) |
+            Q(last_name__icontains=search)  |
+            Q(email__icontains=search)      |
+            Q(registration_id__icontains=search)
+        )
+    if role:
+        qs = qs.filter(role=role)
+
+    data = []
+    for u in qs:
+        photo = None
+        if u.profile_photo:
+            try:    photo = request.build_absolute_uri(u.profile_photo.url)
+            except: pass
+        data.append({
+            'id':              str(u.id),
+            'email':           u.email,
+            'registration_id': u.registration_id or '',
+            'first_name':      u.first_name,
+            'last_name':       u.last_name,
+            'role':            u.role,
+            'affiliation':     u.affiliation,
+            'is_active':       u.is_active,
+            'warning_note':    u.warning_note,
+            'suspended_reason':u.suspended_reason,
+            'profile_photo_url': photo,
+            'created_at':      u.created_at.isoformat(),
+        })
+    return Response({'users': data, 'total': len(data)})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def user_action_view(request, pk):
+    """
+    Warn, suspend, or unsuspend a user.
+    Body: { action: 'warn'|'suspend'|'unsuspend', note: '...' }
+    Admins cannot act on other admins.
+    """
+    if not _is_admin(request.user):
+        return Response({'error': 'Permission denied'}, status=403)
+
+    try:
+        target = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=404)
+
+    if target.role in ADMIN_ROLES:
+        return Response({'error': 'Cannot moderate admin accounts'}, status=400)
+
+    action = request.data.get('action', '').strip()
+    note   = request.data.get('note', '').strip()
+
+    if action == 'warn':
+        if not note:
+            return Response({'error': 'note is required for a warning'}, status=400)
+        target.warning_note = note
+        target.save(update_fields=['warning_note'])
+        # Send push notification to warned user
+        try:
+            from apps.notifications.models import Notification as Notif
+            from apps.notifications import fcm
+            notif = Notif.objects.create(
+                title='⚠️ Warning from Admin',
+                body=note,
+                target_type='user',
+                target_user=target,
+                sent_by=request.user,
+                status='pending',
+                data={'type': 'admin_warning'},
+            )
+            success, failed, bad = fcm.send_to_user(target, notif.title, notif.body, notif.data, notif)
+            notif.status = 'sent'; notif.sent_count = success; notif.failed_count = failed; notif.save()
+        except Exception:
+            pass  # non-critical — warning is stored on user regardless
+        return Response({'success': True, 'action': 'warned', 'note': note})
+
+    elif action == 'suspend':
+        reason = note or 'Account suspended by admin.'
+        target.is_active        = False
+        target.suspended_reason = reason
+        target.save(update_fields=['is_active', 'suspended_reason'])
+        # blacklist all tokens — force immediate logout
+        try:
+            from apps.notifications.models import DeviceToken
+            DeviceToken.objects.filter(user=target).update(is_active=False)
+        except Exception:
+            pass
+        # Send suspension email
+        try:
+            from django.core.mail import send_mail
+            send_mail(
+                subject='ETD 2026 — Account Suspended',
+                message=(
+                    f"Dear {target.get_full_name() or target.email},\n\n"
+                    f"Your ETD 2026 account has been suspended.\n\n"
+                    f"Reason: {reason}\n\n"
+                    f"If you believe this is a mistake, please contact the organizing team.\n\n"
+                    f"Regards,\nETD 2026 Organising Committee\nIIT Delhi"
+                ),
+                from_email=None,
+                recipient_list=[target.email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass  # non-critical
+        return Response({'success': True, 'action': 'suspended'})
+
+    elif action == 'unsuspend':
+        target.is_active        = True
+        target.suspended_reason = ''
+        target.save(update_fields=['is_active', 'suspended_reason'])
+        return Response({'success': True, 'action': 'unsuspended'})
+
+    return Response({'error': 'action must be warn | suspend | unsuspend'}, status=400)

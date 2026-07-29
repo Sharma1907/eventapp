@@ -15,13 +15,19 @@ class LoginSerializer(serializers.Serializer):
         if not email or not password:
             raise serializers.ValidationError('Email and password are required.')
 
-        user = authenticate(username=email, password=password)
-
-        if user is None:
+        # Check suspended BEFORE authenticate (Django skips inactive users)
+        try:
+            from django.contrib.auth import get_user_model
+            u = get_user_model().objects.get(email=email)
+            if not u.is_active:
+                reason = u.suspended_reason or 'Contact the organizers.'
+                raise serializers.ValidationError(f'Account suspended: {reason}')
+        except get_user_model().DoesNotExist:
             raise serializers.ValidationError('Invalid email or password.')
 
-        if not user.is_active:
-            raise serializers.ValidationError('Account is disabled.')
+        user = authenticate(username=email, password=password)
+        if user is None:
+            raise serializers.ValidationError('Invalid email or password.')
 
         data['user'] = user
         return data
@@ -39,8 +45,9 @@ class UserSerializer(serializers.ModelSerializer):
             'research_interests', 'profile_photo', 'profile_photo_url',
             'registration_id', 'must_change_password', 'profile_complete',
             'show_phone', 'show_linkedin', 'linkedin_url', 'created_at',
+            'warning_note', 'suspended_reason',
         ]
-        read_only_fields = ['id', 'email', 'role', 'registration_id', 'created_at']
+        read_only_fields = ['id', 'email', 'role', 'registration_id', 'created_at', 'warning_note', 'suspended_reason']
 
     def get_full_name(self, obj):
         return obj.get_full_name()

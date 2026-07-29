@@ -54,6 +54,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     # State flags
     must_change_password = models.BooleanField(default=True)
     profile_complete    = models.BooleanField(default=False)
+    warning_note        = models.TextField(blank=True, help_text='Admin warning message sent to user')
+    suspended_reason    = models.TextField(blank=True, help_text='Reason for account suspension')
     is_active           = models.BooleanField(default=True)
     is_staff            = models.BooleanField(default=False)
 

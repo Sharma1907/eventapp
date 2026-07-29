@@ -5,6 +5,7 @@ import LoginScreen          from './src/screens/LoginScreen';
 import ChangePasswordScreen from './src/screens/ChangePasswordScreen';
 import MainApp              from './src/MainApp';
 import { registerForPushNotifications, setupNotificationListeners } from './src/notifications';
+import { API_URL, API_HEADERS } from './src/theme';
 
 function SplashScreen() {
   const sc = useRef(new Animated.Value(0.75)).current;
@@ -69,6 +70,17 @@ export default function App() {
     }
   };
 
+  // Refresh user data from server (picks up warnings, status changes)
+  const refreshUser = async (t) => {
+    try {
+      const res = await fetch(API_URL + '/auth/me/', {
+        headers: { ...API_HEADERS, Authorization: 'Bearer ' + (t || tokens).access },
+      });
+      const data = await res.json();
+      if (data.success && data.user) setUser(data.user);
+    } catch { /* silent */ }
+  };
+
   const handlePasswordChanged = async (updatedUser, newTokens) => {
     // Backend returns fresh tokens after password change — use them
     const u = updatedUser || user;
@@ -90,5 +102,5 @@ export default function App() {
   if (screen === 'splash')          return <SplashScreen />;
   if (screen === 'login')           return <LoginScreen onLogin={handleLogin} />;
   if (screen === 'change_password') return <ChangePasswordScreen user={user} tokens={tokens} onDone={handlePasswordChanged} onLogout={handleLogout} />;
-  return <MainApp user={user} tokens={tokens} onLogout={handleLogout} />;
+  return <MainApp user={user} tokens={tokens} onLogout={handleLogout} setUser={setUser} refreshUser={refreshUser} />;
 }

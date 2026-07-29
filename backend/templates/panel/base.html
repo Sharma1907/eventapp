@@ -362,6 +362,15 @@
             <a href="/panel/notifications/" class="menu-item {% if request.resolver_match.url_name == 'notifications_panel' %}active{% endif %}">
                 <i class="fas fa-bell"></i> Notifications
             </a>
+            <a href="/panel/sponsors/" class="menu-item {% if 'sponsor' in request.resolver_match.url_name %}active{% endif %}">
+                <i class="fas fa-handshake"></i> Sponsors
+            </a>
+            <a href="/panel/speakers/" class="menu-item {% if 'speaker' in request.resolver_match.url_name %}active{% endif %}">
+                <i class="fas fa-microphone"></i> Speakers
+            </a>
+            <a href="/panel/users/manage/" class="menu-item {% if request.resolver_match.url_name == 'users_manage' %}active{% endif %}">
+                <i class="fas fa-shield-halved"></i> User Management
+            </a>
             <a href="#" class="menu-item">
                 <i class="fas fa-file-export"></i> Reports
             </a>
