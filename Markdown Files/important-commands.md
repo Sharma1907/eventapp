@@ -6,7 +6,17 @@
 
 3. ngrok http 8000
 
-Okay its working Now give me the full context to start a new chat with new feature to be build it must cover everything till now and i give you early.
+Context Gen: Okay its working Now give me the full context to start a new chat with new feature to be build it must cover everything till now and i give you early.
+
+---
+# Git Push 
+```bash
+cd /workspaces/eventapp && git add . && git commit -m "feat: Add Speakers feature — Django app, API, admin panel, mobile screens" && git push origin main
+
+
+git pull origin main --rebase && git push origin main
+```
+---
 
 
 # Change Admin ID:
