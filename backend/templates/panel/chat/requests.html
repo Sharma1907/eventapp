@@ -1,0 +1,99 @@
+{% extends 'panel/base.html' %}
+{% block title %}Connection Requests — ETD 2026 Admin{% endblock %}
+{% block page_title %}Connection Requests{% endblock %}
+{% block page_subtitle %}All contact card and speaker discussion requests{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <form method="get" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input type="text" name="search" value="{{ search }}"
+               class="form-control" style="width:240px;"
+               placeholder="Search by name or email...">
+        <select name="status" class="form-control" style="width:160px;">
+            <option value="">All Statuses</option>
+            <option value="pending"  {% if status_filter == 'pending'  %}selected{% endif %}>Pending</option>
+            <option value="accepted" {% if status_filter == 'accepted' %}selected{% endif %}>Accepted</option>
+            <option value="declined" {% if status_filter == 'declined' %}selected{% endif %}>Declined</option>
+            <option value="later"    {% if status_filter == 'later'    %}selected{% endif %}>Later</option>
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">
+            <i class="fas fa-search"></i> Filter
+        </button>
+        {% if search or status_filter %}
+            <a href="{% url 'chat_requests_panel' %}" class="btn btn-secondary btn-sm">Clear</a>
+        {% endif %}
+    </form>
+    <a href="{% url 'chat_panel' %}" class="btn btn-secondary">
+        <i class="fas fa-comments"></i> View Conversations
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-paper-plane" style="margin-right:8px;color:var(--primary);"></i>Requests</h3>
+        <span style="font-size:13px;color:var(--text-tertiary);">{{ requests|length }} shown</span>
+    </div>
+    {% if requests %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Sender</th>
+                <th>Receiver</th>
+                <th>Type</th>
+                <th>Topic</th>
+                <th>Status</th>
+                <th>Sent</th>
+                <th>Responded</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in requests %}
+            <tr>
+                <td>
+                    <div style="font-weight:600;">{{ r.sender.get_full_name }}</div>
+                    <div style="font-size:12px;color:var(--text-tertiary);">{{ r.sender.email }}</div>
+                </td>
+                <td>
+                    <div style="font-weight:600;">{{ r.receiver.get_full_name }}</div>
+                    <div style="font-size:12px;color:var(--text-tertiary);">{{ r.receiver.email }}</div>
+                </td>
+                <td>
+                    {% if r.request_type == 'speaker' %}
+                        <span class="badge badge-warning">Speaker</span>
+                    {% else %}
+                        <span class="badge badge-info">Contact</span>
+                    {% endif %}
+                </td>
+                <td style="font-size:13px;">{{ r.topic_display }}</td>
+                <td>
+                    {% if r.status == 'pending' %}
+                        <span class="badge badge-warning">Pending</span>
+                    {% elif r.status == 'accepted' %}
+                        <span class="badge badge-success">Accepted</span>
+                    {% elif r.status == 'declined' %}
+                        <span class="badge badge-danger">Declined</span>
+                    {% else %}
+                        <span class="badge" style="background:#f1f5f9;color:#64748b;">Later</span>
+                    {% endif %}
+                </td>
+                <td style="font-size:13px;color:var(--text-secondary);">
+                    {{ r.created_at|date:"M d, Y" }}
+                </td>
+                <td style="font-size:13px;color:var(--text-secondary);">
+                    {% if r.responded_at %}{{ r.responded_at|date:"M d, Y" }}{% else %}—{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <i class="fas fa-paper-plane"></i>
+        <h3>No requests found</h3>
+        <p>Connection requests appear here once participants start sending contact cards.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

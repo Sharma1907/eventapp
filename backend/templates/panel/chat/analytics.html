@@ -1,0 +1,119 @@
+{% extends 'panel/base.html' %}
+{% block title %}Chat Analytics — ETD 2026 Admin{% endblock %}
+{% block page_title %}Chat Analytics{% endblock %}
+{% block page_subtitle %}Message activity and engagement insights{% endblock %}
+
+{% block content %}
+
+<!-- Navigation -->
+<div class="page-header">
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'chat_panel' %}" class="btn btn-secondary btn-sm"><i class="fas fa-comments"></i> Conversations</a>
+        <a href="{% url 'chat_reports_panel' %}" class="btn btn-secondary btn-sm"><i class="fas fa-flag"></i> Reports</a>
+        <a href="{% url 'chat_requests_panel' %}" class="btn btn-secondary btn-sm"><i class="fas fa-paper-plane"></i> Requests</a>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'chat_export' %}?format=csv" class="btn btn-secondary btn-sm"><i class="fas fa-file-csv"></i> Export CSV</a>
+        <a href="{% url 'chat_export' %}?format=json" class="btn btn-secondary btn-sm"><i class="fas fa-file-code"></i> Export JSON</a>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid" style="margin-bottom:28px;">
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-icon" style="background:#E8F0FE;">
+                <i class="fas fa-message" style="color:var(--primary);font-size:18px;"></i>
+            </div>
+            <span class="stat-trend up">today: {{ today_messages }}</span>
+        </div>
+        <div class="stat-value">{{ total_messages }}</div>
+        <div class="stat-label">Total Messages</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-icon" style="background:#E6F9F1;">
+                <i class="fas fa-comments" style="color:var(--success);font-size:18px;"></i>
+            </div>
+        </div>
+        <div class="stat-value">{{ total_convos }}</div>
+        <div class="stat-label">Conversations</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-icon" style="background:#FEF3C7;">
+                <i class="fas fa-handshake" style="color:var(--warning);font-size:18px;"></i>
+            </div>
+        </div>
+        <div class="stat-value">{{ total_connections }}</div>
+        <div class="stat-label">Connections Made</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-icon" style="background:#EDE9FE;">
+                <i class="fas fa-heart" style="color:#8b5cf6;font-size:18px;"></i>
+            </div>
+        </div>
+        <div class="stat-value">{{ total_reactions }}</div>
+        <div class="stat-label">Reactions</div>
+    </div>
+</div>
+
+<!-- Chart -->
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-header">
+        <h3><i class="fas fa-chart-bar" style="margin-right:8px;color:var(--primary);"></i>Messages — Last 7 Days</h3>
+    </div>
+    <div class="card-body">
+        <div style="display:flex;align-items:flex-end;gap:12px;height:180px;padding-top:20px;">
+            {% for d in daily_data %}
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">
+                <div style="font-size:12px;font-weight:700;color:var(--text);">{{ d.count }}</div>
+                <div style="width:100%;background:var(--primary);border-radius:6px 6px 0 0;min-height:4px;height:{% widthratio d.count max_daily 150 %}px;transition:height 0.5s;"></div>
+                <div style="font-size:11px;color:var(--text-tertiary);font-weight:500;">{{ d.date }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Most Active Users -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-trophy" style="margin-right:8px;color:var(--warning);"></i>Most Active (Last 7 Days)</h3>
+    </div>
+    {% if active_users %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>User</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Messages</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in active_users %}
+            <tr>
+                <td style="font-weight:700;color:{% if forloop.counter <= 3 %}var(--warning){% else %}var(--text-tertiary){% endif %};">
+                    {% if forloop.counter == 1 %}🥇{% elif forloop.counter == 2 %}🥈{% elif forloop.counter == 3 %}🥉{% else %}{{ forloop.counter }}{% endif %}
+                </td>
+                <td style="font-weight:600;">{{ u.get_full_name }}</td>
+                <td style="font-size:13px;color:var(--text-secondary);">{{ u.email }}</td>
+                <td>
+                    <span class="badge badge-info" style="text-transform:capitalize;">{{ u.role|default:"participant" }}</span>
+                </td>
+                <td style="font-weight:700;">{{ u.msg_count }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state" style="padding:32px;">
+        <p>No chat activity in the last 7 days.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

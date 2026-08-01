@@ -7,6 +7,24 @@ from .models import Speaker
 from .serializers import SpeakerListSerializer, SpeakerDetailSerializer
 
 
+def _public_media_url(request, path):
+    if not path:
+        return None
+    public_origin = (
+        request.headers.get('x-public-origin')
+        or request.META.get('HTTP_X_PUBLIC_ORIGIN')
+        or ''
+    ).strip()
+    if public_origin:
+        return public_origin.rstrip('/') + path
+    try:
+        return request.build_absolute_uri(path)
+    except Exception:
+        return path
+
+
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def list_speakers(request):

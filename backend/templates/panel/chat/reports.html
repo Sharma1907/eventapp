@@ -1,0 +1,152 @@
+{% extends 'panel/base.html' %}
+{% block title %}Reported Messages — ETD 2026 Admin{% endblock %}
+{% block page_title %}Reported Messages{% endblock %}
+{% block page_subtitle %}Review flagged messages from participants{% endblock %}
+
+{% block content %}
+
+<!-- Stats -->
+<div class="stats-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:24px;">
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-icon" style="background:#FEE2E2;">
+                <i class="fas fa-flag" style="color:var(--danger);font-size:18px;"></i>
+            </div>
+            <span class="stat-trend pending">{{ pending_count }} pending</span>
+        </div>
+        <div class="stat-value">{{ pending_count }}</div>
+        <div class="stat-label">Pending Reports</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-card-header">
+            <div class="stat-icon" style="background:#E6F9F1;">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:18px;"></i>
+            </div>
+        </div>
+        <div class="stat-value">{{ total_count }}</div>
+        <div class="stat-label">Total Reports</div>
+    </div>
+</div>
+
+<div class="page-header">
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'chat_reports_panel' %}" class="btn {% if not status_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
+        <a href="{% url 'chat_reports_panel' %}?status=pending" class="btn {% if status_filter == 'pending' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
+            <i class="fas fa-clock"></i> Pending {% if pending_count %}<span class="menu-badge" style="margin-left:4px;">{{ pending_count }}</span>{% endif %}
+        </a>
+        <a href="{% url 'chat_reports_panel' %}?status=reviewed" class="btn {% if status_filter == 'reviewed' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
+            <i class="fas fa-check"></i> Reviewed
+        </a>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'chat_panel' %}" class="btn btn-secondary btn-sm"><i class="fas fa-comments"></i> Conversations</a>
+        <a href="{% url 'chat_analytics' %}" class="btn btn-secondary btn-sm"><i class="fas fa-chart-line"></i> Analytics</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-flag" style="margin-right:8px;color:var(--danger);"></i>Reports</h3>
+        <span style="font-size:13px;color:var(--text-tertiary);">{{ reports|length }} shown</span>
+    </div>
+    {% if reports %}
+    <div class="card-body" style="padding:0;">
+        {% for r in reports %}
+        <div style="padding:20px 22px;border-bottom:1px solid var(--bg);{% if not r.reviewed %}background:#FFFBEB;{% endif %}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+                <div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        {% if not r.reviewed %}
+                            <span class="badge badge-danger">PENDING</span>
+                        {% else %}
+                            <span class="badge badge-success">REVIEWED</span>
+                        {% endif %}
+                        <span class="badge badge-warning" style="text-transform:capitalize;">{{ r.get_reason_display }}</span>
+                    </div>
+                    <div style="font-size:12px;color:var(--text-tertiary);">
+                        Reported by <strong style="color:var(--text);">{{ r.reporter.get_full_name }}</strong>
+                        ({{ r.reporter.email }})
+                        · {{ r.created_at|date:"M d, Y H:i" }}
+                    </div>
+                </div>
+                {% if r.reviewed %}
+                    <div style="font-size:11px;color:var(--text-tertiary);text-align:right;">
+                        Reviewed by {{ r.reviewed_by.get_full_name|default:"Admin" }}<br>
+                        {{ r.reviewed_at|date:"M d, H:i" }}
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- The reported message -->
+            <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;{% if r.message.is_deleted %}opacity:0.5;{% endif %}">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                    <div style="font-size:13px;font-weight:600;color:var(--text);">
+                        {{ r.message.sender.get_full_name }}
+                        <span style="font-weight:400;color:var(--text-tertiary);margin-left:4px;">{{ r.message.sender.email }}</span>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-tertiary);">{{ r.message.created_at|date:"M d, H:i" }}</div>
+                </div>
+                {% if r.message.is_deleted %}
+                    <div style="font-size:14px;color:var(--text-tertiary);font-style:italic;">Message has been deleted</div>
+                {% elif r.message.message_type == 'image' and r.message.image %}
+                    <img src="{{ r.message.image.url }}" alt="Reported image" style="max-width:200px;border-radius:8px;">
+                {% else %}
+                    <div style="font-size:14px;color:var(--text);line-height:1.5;">{{ r.message.content }}</div>
+                {% endif %}
+                <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;">
+                    In conversation:
+                    <a href="{% url 'chat_thread' r.message.conversation_id %}" style="color:var(--primary);">
+                        {{ r.message.conversation.participant_a.get_full_name }} ↔ {{ r.message.conversation.participant_b.get_full_name }}
+                    </a>
+                </div>
+            </div>
+
+            {% if r.detail %}
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;padding:8px 12px;background:var(--bg);border-radius:8px;">
+                    <strong>Reporter's note:</strong> {{ r.detail }}
+                </div>
+            {% endif %}
+
+            <!-- Actions (only for pending) -->
+            {% if not r.reviewed %}
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <form method="post" action="{% url 'chat_report_action' r.id %}" style="display:inline;">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="dismiss">
+                    <button type="submit" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-times"></i> Dismiss
+                    </button>
+                </form>
+                {% if not r.message.is_deleted %}
+                <form method="post" action="{% url 'chat_report_action' r.id %}" style="display:inline;"
+                      onsubmit="return confirm('Delete this message for everyone?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete_message">
+                    <button type="submit" class="btn btn-danger btn-sm">
+                        <i class="fas fa-trash"></i> Delete Message
+                    </button>
+                </form>
+                {% endif %}
+                <form method="post" action="{% url 'chat_report_action' r.id %}" style="display:inline;"
+                      onsubmit="return confirm('Send warning to {{ r.message.sender.get_full_name }}?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="warn_user">
+                    <button type="submit" class="btn btn-sm" style="background:var(--warning);color:white;">
+                        <i class="fas fa-exclamation-triangle"></i> Warn User
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="fas fa-flag"></i>
+        <h3>No reports</h3>
+        <p>{% if status_filter %}No {{ status_filter }} reports found.{% else %}No messages have been reported yet.{% endif %}</p>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

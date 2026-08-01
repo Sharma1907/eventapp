@@ -4,6 +4,28 @@ from django.contrib.auth import get_user_model, authenticate
 User = get_user_model()
 
 
+def build_public_media_url(request, path):
+    if not path:
+        return None
+
+    public_origin = ''
+    if request:
+        public_origin = (
+            request.headers.get('x-public-origin')
+            or request.META.get('HTTP_X_PUBLIC_ORIGIN')
+            or ''
+        ).strip()
+
+    if public_origin:
+        public_origin = public_origin.rstrip('/')
+        return f'{public_origin}{path}'
+
+    if request:
+        return request.build_absolute_uri(path)
+
+    return path
+
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -15,7 +37,6 @@ class LoginSerializer(serializers.Serializer):
         if not email or not password:
             raise serializers.ValidationError('Email and password are required.')
 
-        # Check suspended BEFORE authenticate (Django skips inactive users)
         try:
             from django.contrib.auth import get_user_model
             u = get_user_model().objects.get(email=email)
@@ -55,9 +76,7 @@ class UserSerializer(serializers.ModelSerializer):
     def get_profile_photo_url(self, obj):
         if obj.profile_photo:
             request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.profile_photo.url)
-            return obj.profile_photo.url
+            return build_public_media_url(request, obj.profile_photo.url)
         return None
 
 

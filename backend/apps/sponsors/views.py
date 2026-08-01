@@ -7,6 +7,24 @@ from .models import Sponsor
 from .serializers import SponsorListSerializer, SponsorDetailSerializer
 
 
+def _public_media_url(request, path):
+    if not path:
+        return None
+    public_origin = (
+        request.headers.get('x-public-origin')
+        or request.META.get('HTTP_X_PUBLIC_ORIGIN')
+        or ''
+    ).strip()
+    if public_origin:
+        return public_origin.rstrip('/') + path
+    try:
+        return request.build_absolute_uri(path)
+    except Exception:
+        return path
+
+
+
+
 TIER_ORDER = ['national_funding', 'platinum', 'silver', 'bronze']
 
 

@@ -1,11 +1,34 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, StatusBar, Animated, Text } from 'react-native';
+import { View, StatusBar, Animated, Text, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import LoginScreen          from './src/screens/LoginScreen';
 import ChangePasswordScreen from './src/screens/ChangePasswordScreen';
 import MainApp              from './src/MainApp';
 import { registerForPushNotifications, setupNotificationListeners } from './src/notifications';
-import { API_URL, API_HEADERS } from './src/theme';
+import { API_URL, API_HEADERS, fixMediaUrl } from './src/theme';
+
+// ── Session persistence (web only) ──────────────────────────────────────
+const Storage = {
+  async get(key) {
+    if (Platform.OS === 'web') {
+      try {
+        const val = window.localStorage.getItem(key);
+        return val ? JSON.parse(val) : null;
+      } catch { return null; }
+    }
+    return null;
+  },
+  async set(key, value) {
+    if (Platform.OS === 'web') {
+      try { window.localStorage.setItem(key, JSON.stringify(value)); } catch {}
+    }
+  },
+  async remove(key) {
+    if (Platform.OS === 'web') {
+      try { window.localStorage.removeItem(key); } catch {}
+    }
+  },
+};
 
 function SplashScreen() {
   const sc = useRef(new Animated.Value(0.75)).current;
@@ -58,24 +81,72 @@ export default function App() {
   const [screen, setScreen] = useState('splash');
   const [user, setUser]     = useState(null);
   const [tokens, setTokens] = useState(null);
-  const pushToken           = useRef(null);
+  const [notificationRoute, setNotificationRoute] = useState(null);
+  const pushToken = useRef(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setScreen('login'), 2200);
-    return () => clearTimeout(t);
+    const restore = async () => {
+      if (Platform.OS === 'web') {
+        const savedUser   = await Storage.get('etd_user');
+        const savedTokens = await Storage.get('etd_tokens');
+        if (savedUser && savedTokens?.access) {
+          // Verify token is still valid
+          try {
+            const res = await fetch(
+              (Platform.OS === 'web'
+                ? 'https://cautious-eureka-jj56xxggr9vpcq9qj-8000.app.github.dev'
+                : 'https://bauble-aftermost-buffalo.ngrok-free.dev')
+              + '/api/v1/auth/me/',
+              { headers: { 'Authorization': 'Bearer ' + savedTokens.access, 'Content-Type': 'application/json', 'Accept': 'application/json' } }
+            );
+            const data = await res.json();
+            if (data.success && data.user) {
+              setUser(data.user);
+              setTokens(savedTokens);
+              setScreen('app');
+              return;
+            }
+          } catch {}
+        }
+      }
+      setTimeout(() => setScreen('login'), 2200);
+    };
+    restore();
   }, []);
 
   useEffect(() => {
     const cleanup = setupNotificationListeners(
-      (notification) => console.log('Notification:', notification.request.content.title),
-      (response)     => console.log('Tapped:', response.notification.request.content.title),
+      (notification) => {
+        console.log('Notification:', notification.request.content.title);
+      },
+      (response) => {
+        const data = response?.notification?.request?.content?.data || {};
+        console.log('Tapped notification data:', data);
+
+        if (data.type === 'new_message' && data.conversation_id) {
+          setNotificationRoute({
+            type: 'chat_room',
+            conversationId: data.conversation_id,
+          });
+          if (user && tokens) setScreen('app');
+        } else if (data.type === 'connection_request') {
+          setNotificationRoute({ type: 'connection_requests' });
+          if (user && tokens) setScreen('app');
+        }
+      }
     );
     return cleanup;
-  }, []);
+  }, [user, tokens]);
 
   const handleLogin = async (userData, tokenData) => {
+    // Fix media URLs
+    if (userData.profile_photo_url) {
+      userData.profile_photo_url = fixMediaUrl(userData.profile_photo_url);
+    }
     setUser(userData);
     setTokens(tokenData);
+    await Storage.set('etd_user', userData);
+    await Storage.set('etd_tokens', tokenData);
     if (userData.must_change_password) {
       setScreen('change_password');
     } else {
@@ -91,7 +162,12 @@ export default function App() {
         headers: { ...API_HEADERS, Authorization: 'Bearer ' + (t || tokens).access },
       });
       const data = await res.json();
-      if (data.success && data.user) setUser(data.user);
+      if (data.success && data.user) {
+        if (data.user.profile_photo_url) {
+          data.user.profile_photo_url = fixMediaUrl(data.user.profile_photo_url);
+        }
+        setUser(data.user);
+      }
     } catch { /* silent */ }
   };
 
@@ -100,33 +176,44 @@ export default function App() {
     const t = newTokens   || tokens;
     setUser({ ...u, must_change_password: false });
     setTokens(t);
+    await Storage.set('etd_user', { ...u, must_change_password: false });
+    await Storage.set('etd_tokens', t);
     setScreen('app');
     const pt = await registerForPushNotifications(t.access);
     pushToken.current = pt;
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setUser(null);
     setTokens(null);
     pushToken.current = null;
+    setNotificationRoute(null);
+    await Storage.remove('etd_user');
+    await Storage.remove('etd_tokens');
     setScreen('login');
   };
 
-  if (screen === 'splash')          return <SplashScreen />;
-  if (screen === 'login')           return <LoginScreen onLogin={handleLogin} />;
-  if (screen === 'change_password') return (
-    <ChangePasswordScreen
-      user={user} tokens={tokens}
-      onDone={handlePasswordChanged}
-      onLogout={handleLogout}
-    />
-  );
+  if (screen === 'splash') return <SplashScreen />;
+  if (screen === 'login') return <LoginScreen onLogin={handleLogin} />;
+  if (screen === 'change_password') {
+    return (
+      <ChangePasswordScreen
+        user={user} tokens={tokens}
+        onDone={handlePasswordChanged}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   return (
     <MainApp
-      user={user} tokens={tokens}
+      user={user}
+      tokens={tokens}
       onLogout={handleLogout}
       setUser={setUser}
       refreshUser={refreshUser}
+      notificationRoute={notificationRoute}
+      clearNotificationRoute={() => setNotificationRoute(null)}
     />
   );
 }

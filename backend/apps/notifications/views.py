@@ -7,6 +7,24 @@ from .models import DeviceToken, Notification, UserNotification
 from . import fcm
 import logging
 
+
+def _public_media_url(request, path):
+    if not path:
+        return None
+    public_origin = (
+        request.headers.get('x-public-origin')
+        or request.META.get('HTTP_X_PUBLIC_ORIGIN')
+        or ''
+    ).strip()
+    if public_origin:
+        return public_origin.rstrip('/') + path
+    try:
+        return request.build_absolute_uri(path)
+    except Exception:
+        return path
+
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,6 +35,10 @@ def register_token(request):
     platform = request.data.get('platform', 'android')
     if not token:
         return Response({'error': 'token required'}, status=400)
+
+    # Delete ALL old tokens for this user — only keep the latest
+    DeviceToken.objects.filter(user=request.user).exclude(token=token).delete()
+
     obj, created = DeviceToken.objects.update_or_create(
         token=token,
         defaults={'user': request.user, 'platform': platform, 'is_active': True}
@@ -79,7 +101,7 @@ def notification_history(request):
     for n in notifs:
         cover = None
         if n.cover_image:
-            try:    cover = request.build_absolute_uri(n.cover_image.url)
+            try:    cover = _public_media_url(request, n.cover_image.url)
             except: pass
         result.append({
             'id':              str(n.id),
@@ -114,8 +136,6 @@ def notification_detail(request, pk):
         notif.delete()
         return Response({'success': True})
 
-    # PATCH — title/body only (file uploads stay web-only for now)
-    # ceiling: cover_image + attachment upload via multipart not exposed on mobile
     title = request.data.get('title', '').strip()
     body  = request.data.get('body',  '').strip()
     if not title or not body:
@@ -141,7 +161,7 @@ def my_notifications(request):
         cover = None
         if n.cover_image:
             try:
-                cover = request.build_absolute_uri(n.cover_image.url)
+                cover = _public_media_url(request, n.cover_image.url)
             except Exception:
                 pass
         attachments = []
@@ -150,7 +170,7 @@ def my_notifications(request):
                 attachments.append({
                     'id':       att.pk,
                     'filename': att.filename,
-                    'url':      request.build_absolute_uri(att.file.url),
+                    'url':      _public_media_url(request, att.file.url),
                 })
             except Exception:
                 pass

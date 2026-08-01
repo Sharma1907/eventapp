@@ -10,6 +10,7 @@ urlpatterns = [
     path('panel/', include('apps.checkins.admin_urls')),
     path('panel/', include('apps.sponsors.admin_urls')),
     path('panel/', include('apps.speakers.admin_urls')),
+    path('panel/', include('apps.chat.admin_urls')),
 
     # API routes
     path('api/v1/auth/',          include('apps.accounts.urls')),
@@ -23,4 +24,5 @@ urlpatterns = [
     path('api/v1/leaderboard/',   include('apps.leaderboard.urls')),
     path('api/v1/sponsors/',      include('apps.sponsors.urls')),
     path('api/v1/speakers/',      include('apps.speakers.urls')),
+    path('api/v1/chat/',          include('apps.chat.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

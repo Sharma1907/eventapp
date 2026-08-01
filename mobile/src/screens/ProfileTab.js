@@ -1,20 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONT, SPACE, RADIUS, SHADOW, API_URL, API_HEADERS } from '../theme';
+import { COLORS, FONT, SPACE, RADIUS, SHADOW, API_URL, API_HEADERS, fixMediaUrl } from '../theme';
 import { GradientAvatar, FadeIn, IconBox, Divider } from '../components';
 
-export default function ProfileTab({ user, tokens, onLogout, onEditProfile, onChangePassword, onOpenNotifications }) {
-  const [stats, setStats] = useState({ points: 0, rank: 0 });
+export default function ProfileTab({ user, tokens, onLogout, onEditProfile, onChangePassword, onOpenNotifications, onOpenChats }) {
+  const [stats,       setStats]       = useState({ points: 0, rank: 0 });
+  const [connections, setConnections] = useState(0);
 
   const fetchStats = useCallback(async () => {
     if (!tokens?.access) return;
+    const auth = { ...API_HEADERS, Authorization: `Bearer ${tokens.access}` };
     try {
-      const res  = await fetch(`${API_URL}/leaderboard/my/`, {
-        headers: { ...API_HEADERS, Authorization: `Bearer ${tokens.access}` },
-      });
-      const data = await res.json();
-      setStats({ points: data.total_points || 0, rank: data.rank || 0 });
+      const [lb, conn] = await Promise.all([
+        fetch(`${API_URL}/leaderboard/my/`, { headers: auth }),
+        fetch(`${API_URL}/chat/connections/count/`, { headers: auth }),
+      ]);
+      const lbData   = await lb.json();
+      const connData = await conn.json();
+      setStats({ points: lbData.total_points || 0, rank: lbData.rank || 0 });
+      setConnections(connData.count || 0);
     } catch { /* silent */ }
   }, [tokens]);
 
@@ -28,6 +33,7 @@ export default function ProfileTab({ user, tokens, onLogout, onEditProfile, onCh
     ]},
     { section: 'Conference', items: [
       { icon: 'bar-chart-outline',     label: 'My Activity',   sub: `${stats.points} points earned` },
+      { icon: 'chatbubbles-outline',   label: 'My Connections', sub: 'Chats & requests',        onPress: onOpenChats },
       { icon: 'calendar-outline',      label: 'My Sessions',   sub: 'Bookmarked talks' },
       { icon: 'document-text-outline', label: 'Certificates',  sub: 'Download certificate' },
     ]},
@@ -48,7 +54,7 @@ export default function ProfileTab({ user, tokens, onLogout, onEditProfile, onCh
           <View style={p.blob} />
           <FadeIn>
             {user.profile_photo_url
-              ? <Image source={{ uri: user.profile_photo_url }} style={p.photo} />
+              ? <Image source={{ uri: fixMediaUrl(user.profile_photo_url) }} style={p.photo} />
               : <GradientAvatar name={user.first_name || user.email} size={88} radius={28}
                   style={{ borderWidth: 3, borderColor: 'rgba(255,255,255,0.3)', alignSelf: 'center', marginBottom: SPACE.md }} />}
             <Text style={p.name}>{user.first_name} {user.last_name}</Text>
@@ -66,9 +72,10 @@ export default function ProfileTab({ user, tokens, onLogout, onEditProfile, onCh
           <FadeIn delay={80}>
             <View style={p.statsRow}>
               {[
-                { label: 'POINTS', value: String(stats.points) },
-                { label: 'RANK',   value: stats.rank > 0 ? `#${stats.rank}` : '—' },
-                { label: 'PROFILE',value: user.profile_complete ? '✓' : '○' },
+                { label: 'POINTS',  value: String(stats.points) },
+                { label: 'RANK',    value: stats.rank > 0 ? `#${stats.rank}` : '—' },
+                { label: 'CONNECTS',value: String(connections) },
+                { label: 'PROFILE', value: user.profile_complete ? '✓' : '○' },
               ].map(st => (
                 <View key={st.label} style={p.statPill}>
                   <Text style={p.statPillValue}>{st.value}</Text>
@@ -159,7 +166,7 @@ const p = StyleSheet.create({
 
   body: { paddingHorizontal: SPACE.xl, paddingTop: SPACE.xl },
 
-  statsRow: { flexDirection: 'row', gap: SPACE.md, marginBottom: SPACE.xl, justifyContent: 'center' },
+  statsRow: { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.xl, justifyContent: 'center' },
   statPill: {
     flex: 1, alignItems: 'center', paddingVertical: SPACE.lg,
     backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 20,

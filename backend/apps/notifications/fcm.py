@@ -48,7 +48,10 @@ def _send_expo(tokens,title,body,data,img=None):
     msgs=[]
     for t in tokens:
         m={"to":t,"title":title,"body":body,"data":data or {},"sound":"default"}
-        if img: m["data"]["cover_image"]=img
+        if (data or {}).get("type") in ("new_message", "connection_request"):
+            m["channelId"] = "chat"
+        if img:
+            m["data"]["cover_image"]=img
         msgs.append(m)
     try:
         r=requests.post(EXPO_URL,json=msgs,headers={'Accept':'application/json','Content-Type':'application/json'},timeout=10).json()

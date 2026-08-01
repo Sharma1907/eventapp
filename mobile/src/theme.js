@@ -10,20 +10,16 @@ export const COLORS = {
   brandDeeper:   '#070614',
   brandLight:    '#e8eeff',
   brandMid:      'rgba(3,51,182,0.10)',
-
   accent:        '#f59e0b',
   accentDark:    '#d97706',
   accentLight:   '#fef3c7',
   accentMid:     'rgba(245,158,11,0.15)',
-
   bg:            '#f0f4f9',
   bgAlt:         '#eef2f6',
   bgCard:        '#e6ebf5',
   surface:       '#FFFFFF',
-
   glass:         'rgba(255,255,255,0.14)',
   glassBorder:   'rgba(255,255,255,0.22)',
-
   success:       '#10b981',
   successLight:  '#d1fae5',
   error:         '#ef4444',
@@ -36,13 +32,11 @@ export const COLORS = {
   tealLight:     '#ccfbf1',
   rose:          '#f43f5e',
   roseLight:     '#ffe4e6',
-
   text:          '#0F172A',
   textSec:       '#475569',
   textTer:       '#94a3b8',
   textInverse:   '#FFFFFF',
   textMuted:     '#cbd5e1',
-
   border:        '#e2e8f0',
   borderLight:   '#f1f5f9',
 };
@@ -66,33 +60,62 @@ export const SHADOW = {
   sm: Platform.select({
     ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 },
     android: { elevation: 0 },
+    default: {},
   }),
   md: Platform.select({
     ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.07, shadowRadius: 8 },
     android: { elevation: 0 },
+    default: {},
   }),
   lg: Platform.select({
     ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.10, shadowRadius: 16 },
     android: { elevation: 0 },
+    default: {},
   }),
   xl: Platform.select({
     ios: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.14, shadowRadius: 24 },
     android: { elevation: 0 },
+    default: {},
   }),
   brand: Platform.select({
     ios: { shadowColor: '#0333b6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.30, shadowRadius: 12 },
     android: { elevation: 0 },
+    default: {},
   }),
   accent: Platform.select({
     ios: { shadowColor: '#f59e0b', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10 },
     android: { elevation: 0 },
+    default: {},
   }),
 };
 
 export const TOP = Platform.OS === 'ios' ? 54 : 44;
-export const API_URL = 'https://bauble-aftermost-buffalo.ngrok-free.dev/api/v1';
-export const API_HEADERS = {
+
+// Phone → ngrok
+// Web   → Codespaces public port
+const NGROK      = 'https://bauble-aftermost-buffalo.ngrok-free.dev/api/v1';
+const CODESPACES = 'https://cautious-eureka-jj56xxggr9vpcq9qj-8000.app.github.dev/api/v1';
+
+export const API_URL  = Platform.OS === 'web' ? CODESPACES : NGROK;
+export const API_ROOT = API_URL.replace(/\/api\/v1$/, '');
+
+const BASE_HEADERS = {
   'Content-Type': 'application/json',
   'Accept': 'application/json',
-  'ngrok-skip-browser-warning': 'true',
+  'x-public-origin': API_ROOT,
 };
+
+export const API_HEADERS = Platform.OS === 'web'
+  ? BASE_HEADERS
+  : { ...BASE_HEADERS, 'ngrok-skip-browser-warning': 'true' };
+
+
+// Fix media URLs — replaces localhost with the correct public base
+export function fixMediaUrl(url) {
+  if (!url) return null;
+  // Already a full public URL
+  if (url.startsWith('http') && !url.includes('localhost')) return url;
+  // Extract the path part
+  const path = url.includes('/media/') ? '/media/' + url.split('/media/')[1] : url;
+  return API_ROOT + path;
+}

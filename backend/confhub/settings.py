@@ -41,6 +41,7 @@ LOCAL_APPS = [
     'apps.checkins',
     
     'apps.leaderboard',
+    'apps.chat',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -152,9 +153,22 @@ REST_FRAMEWORK = {
 # CORS - Allow everything in development
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'ngrok-skip-browser-warning',
+    'x-public-origin',
+]
 
 # CSRF
-CSRF_TRUSTED_ORIGINS = ['https://*.app.github.dev', 'http://localhost:8000', 'https://*.ngrok-free.app', 'https://*.ngrok-free.dev']
+CSRF_TRUSTED_ORIGINS = ['https://*.app.github.dev', 'http://localhost:8000', 'https://*.ngrok-free.app', 'https://*.ngrok-free.dev', 'https://cautious-eureka-jj56xxggr9vpcq9qj-8000.app.github.dev', 'https://cautious-eureka-jj56xxggr9vpcq9qj-8081.app.github.dev']
 
 # Static & Media
 STATIC_URL = '/static/'

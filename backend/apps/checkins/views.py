@@ -13,11 +13,28 @@ User = get_user_model()
 SCANNER_ROLES = {'super_admin', 'mgmt_admin', 'team_head', 'staff'}
 
 
+def _public_media_url(request, path):
+    if not path:
+        return None
+    public_origin = (
+        request.headers.get('x-public-origin')
+        or request.META.get('HTTP_X_PUBLIC_ORIGIN')
+        or ''
+    ).strip()
+    if public_origin:
+        return public_origin.rstrip('/') + path
+    try:
+        return request.build_absolute_uri(path)
+    except Exception:
+        return path
+
+
+
 def _user_detail(user, request):
     photo = None
     if user.profile_photo:
         try:
-            photo = request.build_absolute_uri(user.profile_photo.url)
+            photo = _public_media_url(request, user.profile_photo.url)
         except Exception:
             pass
     return {
@@ -177,13 +194,24 @@ def my_qr(request):
 def network_list(request):
     search   = request.GET.get('search', '').strip()
     interest = request.GET.get('interest', '').strip().lower()
+    role_filter = request.GET.get('role', '').strip()
 
-    qs = User.objects.filter(
-        is_active=True, checkins__checkin_type='conference'
-    ).distinct().order_by('first_name', 'last_name')
+    from django.db.models import Q
+
+    if role_filter == 'speaker':
+        # Speakers: all active users with role=speaker, no check-in required
+        qs = User.objects.filter(
+            is_active=True, role='speaker'
+        ).distinct().order_by('first_name', 'last_name')
+    else:
+        # All active participants (non-speaker, non-admin) — everyone is discoverable
+        qs = User.objects.filter(
+            is_active=True,
+        ).exclude(
+            role__in=['speaker', 'super_admin', 'mgmt_admin']
+        ).distinct().order_by('first_name', 'last_name')
 
     if search:
-        from django.db.models import Q
         qs = qs.filter(
             Q(first_name__icontains=search) | Q(last_name__icontains=search) |
             Q(affiliation__icontains=search) | Q(registration_id__icontains=search)

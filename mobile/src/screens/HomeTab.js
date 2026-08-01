@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONT, SPACE, RADIUS, SHADOW, API_URL, API_HEADERS } from '../theme';
+import { COLORS, FONT, SPACE, RADIUS, SHADOW, API_URL, API_HEADERS, fixMediaUrl } from '../theme';
 import { PulsingDot, GradientAvatar } from '../components';
 
 const { width: W } = Dimensions.get('window');
@@ -71,7 +71,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export default function HomeTab({ user, tokens, onOpenNotifications, onOpenSponsors, onOpenSpeakers }) {
+export default function HomeTab({ user, tokens, onOpenNotifications, onOpenSponsors, onOpenSpeakers, onOpenChats, chatBadge }) {
   const [unread, setUnread] = useState(0);
   const [points, setPoints] = useState(0);
   const [rank, setRank] = useState(0);
@@ -125,7 +125,7 @@ export default function HomeTab({ user, tokens, onOpenNotifications, onOpenSpons
             )}
           </TouchableOpacity>
           {user.profile_photo_url
-            ? <Image source={{ uri: user.profile_photo_url }} style={g.avatar} />
+            ? <Image source={{ uri: fixMediaUrl(user.profile_photo_url) }} style={g.avatar} />
             : <GradientAvatar name={user.first_name || user.email} size={40} radius={20} />}
         </View>
       </View>
@@ -198,6 +198,7 @@ export default function HomeTab({ user, tokens, onOpenNotifications, onOpenSpons
               onPress={() => {
                 if (q.action === 'sponsors' && onOpenSponsors) onOpenSponsors();
                 if (q.action === 'speakers' && onOpenSpeakers) onOpenSpeakers();
+
               }}
             >
               <View style={[g.quickIcon, { backgroundColor: q.bg }]}>
@@ -208,15 +209,24 @@ export default function HomeTab({ user, tokens, onOpenNotifications, onOpenSpons
           ))}
         </ScrollView>
 
-        {/* 4. SHOW MY QR */}
-        <View style={{ paddingHorizontal: PAD, marginBottom: SPACE.xl }}>
-          <TouchableOpacity activeOpacity={0.85}>
-            <LinearGradient colors={[COLORS.text, '#2d3748']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={g.qrBtn}>
-              <Ionicons name="qr-code" size={26} color="#fff" style={{ marginRight: SPACE.md }} />
-              <Text style={g.qrBtnText}>Show My QR</Text>
-              <View style={{ flex: 1 }} />
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.5)" />
+        {/* 4. SHOW MY QR + MY CHATS */}
+        <View style={{ paddingHorizontal: PAD, marginBottom: SPACE.xl, flexDirection: 'row', gap: SPACE.md }}>
+          <TouchableOpacity activeOpacity={0.85} style={{ flex: 1 }}>
+            <LinearGradient colors={[COLORS.text, '#2d3748']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={g.dualBtn}>
+              <Ionicons name="qr-code" size={22} color="#fff" />
+              <Text style={g.dualBtnText}>Show My QR</Text>
             </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.85} style={{ flex: 1, position: 'relative' }} onPress={onOpenChats}>
+            <LinearGradient colors={[COLORS.brand, COLORS.brandDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={g.dualBtn}>
+              <Ionicons name="chatbubbles" size={22} color="#fff" />
+              <Text style={g.dualBtnText}>My Chats</Text>
+            </LinearGradient>
+            {chatBadge > 0 && (
+              <View style={g.chatBadge}>
+                <Text style={g.chatBadgeText}>{chatBadge > 9 ? '9+' : chatBadge}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -389,15 +399,24 @@ const g = StyleSheet.create({
   quickIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   quickLabel: { fontSize: FONT.sm, fontWeight: FONT.w6, color: COLORS.text },
 
-  qrBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: SPACE.xl, paddingVertical: SPACE.lg + 2, borderRadius: 24,
+
+  dualBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: SPACE.sm, paddingVertical: SPACE.lg + 2, borderRadius: 20,
     ...Platform.select({
       ios: { shadowColor: COLORS.text, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 12 },
       android: { elevation: 4 },
     }),
   },
-  qrBtnText: { fontSize: FONT.md, fontWeight: FONT.w8, color: '#fff', letterSpacing: 0.3 },
+  dualBtnText: { fontSize: FONT.sm, fontWeight: FONT.w8, color: '#fff', letterSpacing: 0.2 },
+  chatBadge: {
+    position: 'absolute', top: -6, right: -4,
+    minWidth: 22, height: 22, borderRadius: 11,
+    backgroundColor: COLORS.error,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4, borderWidth: 2.5, borderColor: '#f0f4f9',
+  },
+  chatBadgeText: { fontSize: 10, fontWeight: FONT.w8, color: '#fff' },
 
   statusPill: {
     flexDirection: 'row', alignItems: 'center', gap: SPACE.md,

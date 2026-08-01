@@ -1,12 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, FONT, SPACE, RADIUS, SHADOW } from './theme';
+import { COLORS, FONT, SPACE, RADIUS, SHADOW, API_URL, API_HEADERS, fixMediaUrl } from './theme';
 import HomeTab from './screens/HomeTab';
 import ScheduleTab from './screens/ScheduleTab';
 import QRScreen from './screens/QRScreen';
-import FeedScreen from './screens/FeedScreen';
 import NetworkScreen from './screens/NetworkScreen';
 import ProfileTab from './screens/ProfileTab';
 import NotificationsScreen from './screens/NotificationsScreen';
@@ -15,11 +14,14 @@ import EditProfileScreen from './screens/EditProfileScreen';
 import ChangePasswordScreen from './screens/ChangePasswordScreen';
 import SponsorsScreen from './screens/SponsorsScreen';
 import SpokersScreen from './screens/SpokersScreen';
+import ChatListScreen from './screens/ChatListScreen';
+import ChatRoomScreen from './screens/ChatRoomScreen';
+import ConnectionRequestsScreen from './screens/ConnectionRequestsScreen';
 
 const BASE_TABS = [
   { key: 'home',     iconOn: 'home',     iconOff: 'home-outline',     label: 'Home' },
   { key: 'schedule', iconOn: 'calendar', iconOff: 'calendar-outline', label: 'Schedule' },
-  { key: 'qr',       iconOn: 'qr-code',  iconOff: 'qr-code-outline', label: 'My QR' },
+  { key: 'qr',       iconOn: 'qr-code',  iconOff: 'qr-code-outline',  label: 'My QR' },
   { key: 'network',  iconOn: 'people',   iconOff: 'people-outline',   label: 'Network' },
   { key: 'profile',  iconOn: 'person',   iconOff: 'person-outline',   label: 'Profile' },
 ];
@@ -31,8 +33,9 @@ function getTabs(role) {
   return BASE_TABS.slice(0, 4).concat(ADMIN_TAB);
 }
 
-function BottomTabBar({ active, onTab, tabs }) {
+function BottomTabBar({ active, onTab, tabs, networkBadge }) {
   const scales = useRef(tabs.map(() => new Animated.Value(1))).current;
+
   const press = (key, i) => {
     Animated.sequence([
       Animated.timing(scales[i], { toValue: 0.82, duration: 80, useNativeDriver: true }),
@@ -56,6 +59,11 @@ function BottomTabBar({ active, onTab, tabs }) {
                 <>
                   <View style={[st.iconWrap, on && st.iconWrapOn]}>
                     <Ionicons name={on ? t.iconOn : t.iconOff} size={20} color={on ? COLORS.brand : COLORS.textTer} />
+                    {t.key === 'network' && networkBadge > 0 && (
+                      <View style={st.tabBadge}>
+                        <Text style={st.tabBadgeText}>{networkBadge > 9 ? '9+' : networkBadge}</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={[st.tabLabel, on && st.tabLabelOn]}>{t.label}</Text>
                 </>
@@ -68,37 +76,102 @@ function BottomTabBar({ active, onTab, tabs }) {
   );
 }
 
-export default function MainApp({ user: initialUser, tokens, onLogout, setUser: setUserProp, refreshUser }) {
+export default function MainApp({
+  user: initialUser,
+  tokens,
+  onLogout,
+  setUser: setUserProp,
+  refreshUser,
+  notificationRoute,
+  clearNotificationRoute,
+}) {
   const [tab, setTab] = useState('home');
   const [subScreen, setSubScreen] = useState(null);
+  const [subParams, setSubParams] = useState({});
   const [user, setUser] = useState(initialUser);
   const [warningVisible, setWarningVisible] = useState(false);
   const [warningText, setWarningText] = useState('');
+  const [pendingRequests, setPendingRequests] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
+
   const tabs = getTabs(user.role);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (refreshUser) refreshUser(tokens);
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (user.warning_note) {
       setWarningText(user.warning_note);
       setWarningVisible(true);
     }
   }, [user.warning_note]);
 
-  const dismissWarning = () => setWarningVisible(false);
+  const fetchBadges = useCallback(async () => {
+    if (!tokens?.access) return;
+    const auth = { ...API_HEADERS, Authorization: `Bearer ${tokens.access}` };
+    try {
+      const [reqRes, convRes] = await Promise.all([
+        fetch(`${API_URL}/chat/requests/count/`, { headers: auth }),
+        fetch(`${API_URL}/chat/conversations/`,  { headers: auth }),
+      ]);
+      const reqData = await reqRes.json();
+      const convData = await convRes.json();
+      setPendingRequests(reqData.pending_count || 0);
+      setChatUnread(convData.total_unread || 0);
+    } catch { /* silent */ }
+  }, [tokens]);
 
-  const handleProfileUpdated = (updatedUser) => { setUser(updatedUser); if (setUserProp) setUserProp(updatedUser); };
+  useEffect(() => {
+    fetchBadges();
+    const t = setInterval(fetchBadges, 30000);
+    return () => clearInterval(t);
+  }, [fetchBadges]);
+
+  const handleProfileUpdated = (updatedUser) => {
+    setUser(updatedUser);
+    if (setUserProp) setUserProp(updatedUser);
+  };
+
+  const openSubScreen = (name, params = {}) => {
+    setSubParams(params);
+    setSubScreen(name);
+  };
+
+  const closeSubScreen = () => {
+    setSubScreen(null);
+    setSubParams({});
+    fetchBadges();
+  };
+
+  const openChat = (conversationId) => openSubScreen('chat_room', { conversationId });
+
+  useEffect(() => {
+    if (!notificationRoute) return;
+
+    if (notificationRoute.type === 'chat_room' && notificationRoute.conversationId) {
+      setSubParams({ conversationId: notificationRoute.conversationId });
+      setSubScreen('chat_room');
+      if (clearNotificationRoute) clearNotificationRoute();
+      return;
+    }
+
+    if (notificationRoute.type === 'connection_requests') {
+      setSubParams({});
+      setSubScreen('connection_requests');
+      if (clearNotificationRoute) clearNotificationRoute();
+    }
+  }, [notificationRoute]);
 
   if (subScreen === 'notifications') {
-    return <NotificationsScreen tokens={tokens} onBack={() => setSubScreen(null)} />;
+    return <NotificationsScreen tokens={tokens} onBack={closeSubScreen} />;
   }
   if (subScreen === 'edit_profile') {
     return (
       <EditProfileScreen
-        user={user} tokens={tokens}
-        onBack={() => setSubScreen(null)}
+        user={user}
+        tokens={tokens}
+        onBack={closeSubScreen}
         onProfileUpdated={handleProfileUpdated}
       />
     );
@@ -106,33 +179,81 @@ export default function MainApp({ user: initialUser, tokens, onLogout, setUser: 
   if (subScreen === 'change_password') {
     return (
       <ChangePasswordScreen
-        user={user} tokens={tokens}
-        onDone={() => setSubScreen(null)}
+        user={user}
+        tokens={tokens}
+        onDone={closeSubScreen}
         onLogout={onLogout}
       />
     );
   }
   if (subScreen === 'sponsors') {
-    return <SponsorsScreen tokens={tokens} onBack={() => setSubScreen(null)} />;
+    return <SponsorsScreen tokens={tokens} onBack={closeSubScreen} />;
   }
   if (subScreen === 'speakers') {
-    return <SpokersScreen tokens={tokens} onBack={() => setSubScreen(null)} />;
+    return <SpokersScreen tokens={tokens} onBack={closeSubScreen} />;
+  }
+  if (subScreen === 'chat_list') {
+    return (
+      <ChatListScreen
+        tokens={tokens}
+        onBack={closeSubScreen}
+        onOpenChat={(convId) => openSubScreen('chat_room', { conversationId: convId })}
+        onOpenRequests={() => openSubScreen('connection_requests')}
+        pendingCount={pendingRequests}
+      />
+    );
+  }
+  if (subScreen === 'chat_room') {
+    return (
+      <ChatRoomScreen
+        tokens={tokens}
+        conversationId={subParams.conversationId}
+        onBack={closeSubScreen}
+      />
+    );
+  }
+  if (subScreen === 'connection_requests') {
+    return (
+      <ConnectionRequestsScreen
+        tokens={tokens}
+        onBack={closeSubScreen}
+        onOpenChat={(convId) => openSubScreen('chat_room', { conversationId: convId })}
+      />
+    );
   }
 
   const SCREENS = {
-    home:     <HomeTab user={user} tokens={tokens}
-                onOpenNotifications={() => setSubScreen('notifications')}
-                onOpenSponsors={() => setSubScreen('sponsors')}
-                onOpenSpeakers={() => setSubScreen('speakers')} />,
+    home: (
+      <HomeTab
+        user={user}
+        tokens={tokens}
+        onOpenNotifications={() => openSubScreen('notifications')}
+        onOpenSponsors={() => openSubScreen('sponsors')}
+        onOpenSpeakers={() => openSubScreen('speakers')}
+        onOpenChats={() => openSubScreen('chat_list')}
+        chatBadge={pendingRequests + chatUnread}
+      />
+    ),
     schedule: <ScheduleTab />,
-    qr:       <QRScreen user={user} tokens={tokens} />,
-    network:  <NetworkScreen tokens={tokens} />,
-    profile:  (
+    qr: <QRScreen user={user} tokens={tokens} />,
+    network: (
+      <NetworkScreen
+        tokens={tokens}
+        user={user}
+        pendingCount={pendingRequests}
+        onOpenRequests={() => openSubScreen('connection_requests')}
+        onOpenChat={openChat}
+      />
+    ),
+    profile: (
       <ProfileTab
-        user={user} tokens={tokens} onLogout={onLogout}
-        onEditProfile={() => setSubScreen('edit_profile')}
-        onChangePassword={() => setSubScreen('change_password')}
-        onOpenNotifications={() => setSubScreen('notifications')}
+        user={user}
+        tokens={tokens}
+        onLogout={onLogout}
+        onEditProfile={() => openSubScreen('edit_profile')}
+        onChangePassword={() => openSubScreen('change_password')}
+        onOpenNotifications={() => openSubScreen('notifications')}
+        onOpenChats={() => openSubScreen('chat_list')}
       />
     ),
     admin: <AdminTab user={user} tokens={tokens} />,
@@ -141,7 +262,8 @@ export default function MainApp({ user: initialUser, tokens, onLogout, setUser: 
   return (
     <View style={{ flex: 1 }}>
       {SCREENS[tab] || SCREENS.home}
-      <Modal visible={warningVisible} transparent animationType="fade" onRequestClose={dismissWarning}>
+
+      <Modal visible={warningVisible} transparent animationType="fade" onRequestClose={() => setWarningVisible(false)}>
         <View style={wm.overlay}>
           <View style={wm.card}>
             <View style={wm.iconWrap}>
@@ -150,13 +272,14 @@ export default function MainApp({ user: initialUser, tokens, onLogout, setUser: 
             <Text style={wm.title}>Warning from Admin</Text>
             <Text style={wm.body}>{warningText}</Text>
             <Text style={wm.hint}>Please review your conduct at the conference.</Text>
-            <TouchableOpacity style={wm.btn} onPress={dismissWarning} activeOpacity={0.8}>
+            <TouchableOpacity style={wm.btn} onPress={() => setWarningVisible(false)} activeOpacity={0.8}>
               <Text style={wm.btnTxt}>I Understand</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-      <BottomTabBar active={tab} onTab={setTab} tabs={tabs} />
+
+      <BottomTabBar active={tab} onTab={setTab} tabs={tabs} networkBadge={pendingRequests} />
     </View>
   );
 }
@@ -173,11 +296,19 @@ const wm = StyleSheet.create({
 });
 
 const st = StyleSheet.create({
-  bar:        { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', backgroundColor: COLORS.surface, borderTopWidth: 1, borderTopColor: COLORS.borderLight, paddingBottom: Platform.OS === 'ios' ? 24 : SPACE.sm, paddingTop: SPACE.sm, paddingHorizontal: SPACE.sm },
-  tabItem:    { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
-  iconWrap:   { width: 36, height: 28, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
+  bar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', backgroundColor: COLORS.surface, borderTopWidth: 1, borderTopColor: COLORS.borderLight, paddingBottom: Platform.OS === 'ios' ? 24 : 28, paddingTop: SPACE.sm, paddingHorizontal: SPACE.sm },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'flex-end' },
+  iconWrap: { width: 36, height: 28, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   iconWrapOn: { backgroundColor: COLORS.brandLight },
-  tabLabel:   { fontSize: 10, fontWeight: FONT.w5, color: COLORS.textTer, marginTop: 3 },
+  tabLabel: { fontSize: 10, fontWeight: FONT.w5, color: COLORS.textTer, marginTop: 3 },
   tabLabelOn: { color: COLORS.brand, fontWeight: FONT.w7 },
-  qrBtn:      { width: 52, height: 52, borderRadius: RADIUS.xl, alignItems: 'center', justifyContent: 'center', marginTop: -22, ...SHADOW.accent },
+  qrBtn: { width: 52, height: 52, borderRadius: RADIUS.xl, alignItems: 'center', justifyContent: 'center', marginTop: -22, ...SHADOW.accent },
+  tabBadge: {
+    position: 'absolute', top: -4, right: -4,
+    minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: COLORS.error,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 2, borderWidth: 2, borderColor: COLORS.surface,
+  },
+  tabBadgeText: { fontSize: 8, fontWeight: FONT.w8, color: '#fff' },
 });
