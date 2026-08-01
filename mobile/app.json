@@ -18,7 +18,8 @@
       "bundleIdentifier": "com.etd2026.app"
     },
     "android": {
-      "package": "com.etd2026.app"
+      "package": "com.etd2026.app",
+      "googleServicesFile": "./google-services.json"
     },
     "scheme": "etd2026",
     "plugins": [
