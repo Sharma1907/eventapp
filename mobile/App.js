@@ -10,6 +10,7 @@ import { API_URL, API_HEADERS } from './src/theme';
 function SplashScreen() {
   const sc = useRef(new Animated.Value(0.75)).current;
   const op = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     Animated.parallel([
       Animated.spring(sc, { toValue: 1, tension: 55, friction: 8, useNativeDriver: true }),
@@ -18,15 +19,30 @@ function SplashScreen() {
   }, []);
 
   return (
-    <LinearGradient colors={['#070614', '#0F172A', '#0333b6']} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+    <LinearGradient
+      colors={['#070614', '#0F172A', '#0333b6']}
+      start={{ x: 0.1, y: 0 }}
+      end={{ x: 0.9, y: 1 }}
+      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+    >
       <StatusBar barStyle="light-content" />
-      <View style={{ position: 'absolute', width: 300, height: 300, borderRadius: 150, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', top: -80, right: -80 }} />
+      <View style={{
+        position: 'absolute', width: 300, height: 300, borderRadius: 150,
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', top: -80, right: -80,
+      }} />
       <Animated.View style={{ alignItems: 'center', transform: [{ scale: sc }], opacity: op }}>
-        <View style={{ width: 90, height: 90, borderRadius: 26, backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+        <View style={{
+          width: 90, height: 90, borderRadius: 26,
+          backgroundColor: 'rgba(255,255,255,0.10)',
+          borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)',
+          alignItems: 'center', justifyContent: 'center', marginBottom: 20,
+        }}>
           <Text style={{ fontSize: 26, fontWeight: '900', color: '#FFFFFF', letterSpacing: 2 }}>ETD</Text>
         </View>
         <Text style={{ fontSize: 38, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.5 }}>ETD 2026</Text>
-        <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.50)', marginTop: 6, letterSpacing: 0.3 }}>ETDs in the age of AI</Text>
+        <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.50)', marginTop: 6, letterSpacing: 0.3 }}>
+          ETDs in the age of AI
+        </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 24 }}>
           <View style={{ width: 32, height: 2, backgroundColor: '#f59e0b', borderRadius: 2 }} />
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b', marginHorizontal: 6 }} />
@@ -60,7 +76,6 @@ export default function App() {
   const handleLogin = async (userData, tokenData) => {
     setUser(userData);
     setTokens(tokenData);
-    // Gate: force password change before entering the app
     if (userData.must_change_password) {
       setScreen('change_password');
     } else {
@@ -70,7 +85,6 @@ export default function App() {
     }
   };
 
-  // Refresh user data from server (picks up warnings, status changes)
   const refreshUser = async (t) => {
     try {
       const res = await fetch(API_URL + '/auth/me/', {
@@ -82,7 +96,6 @@ export default function App() {
   };
 
   const handlePasswordChanged = async (updatedUser, newTokens) => {
-    // Backend returns fresh tokens after password change — use them
     const u = updatedUser || user;
     const t = newTokens   || tokens;
     setUser({ ...u, must_change_password: false });
@@ -101,6 +114,19 @@ export default function App() {
 
   if (screen === 'splash')          return <SplashScreen />;
   if (screen === 'login')           return <LoginScreen onLogin={handleLogin} />;
-  if (screen === 'change_password') return <ChangePasswordScreen user={user} tokens={tokens} onDone={handlePasswordChanged} onLogout={handleLogout} />;
-  return <MainApp user={user} tokens={tokens} onLogout={handleLogout} setUser={setUser} refreshUser={refreshUser} />;
+  if (screen === 'change_password') return (
+    <ChangePasswordScreen
+      user={user} tokens={tokens}
+      onDone={handlePasswordChanged}
+      onLogout={handleLogout}
+    />
+  );
+  return (
+    <MainApp
+      user={user} tokens={tokens}
+      onLogout={handleLogout}
+      setUser={setUser}
+      refreshUser={refreshUser}
+    />
+  );
 }

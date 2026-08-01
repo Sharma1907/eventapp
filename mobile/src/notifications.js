@@ -9,17 +9,15 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge:  true,
+    priority: Notifications.AndroidNotificationPriority.HIGH,
   }),
 });
 
-// ─── IMPORTANT: paste your Expo project ID here ──────────────
-// Get it from: https://expo.dev → your project → Project ID
-const EXPO_PROJECT_ID = 'afa28d7e-10d5-4e85-bed4-783b7371a56b';
-// ─────────────────────────────────────────────────────────────
+const EXPO_PROJECT_ID = 'afa28d7e-10d5-4e85-bed4-783b7371a60b';
 
 export async function registerForPushNotifications(accessToken) {
   if (!Device.isDevice) {
-    console.log('[Push] Skipping — simulator/emulator does not receive push');
+    console.log('[Push] Skipping — simulator/emulator');
     return null;
   }
 
@@ -33,22 +31,31 @@ export async function registerForPushNotifications(accessToken) {
   }
 
   if (finalStatus !== 'granted') {
-    console.log('[Push] Permission denied by user');
+    console.log('[Push] Permission denied');
     return null;
   }
 
   // Android notification channel
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name:              'ETD 2026',
-      importance:        Notifications.AndroidImportance.MAX,
-      vibrationPattern:  [0, 250, 250, 250],
-      lightColor:        '#0333b6',
-      sound:             'default',
+      name:             'ETD 2026',
+      importance:       Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor:       '#0333b6',
+      sound:            'default',
+    });
+
+    // Chat channel
+    await Notifications.setNotificationChannelAsync('chat', {
+      name:             'Chat Messages',
+      importance:       Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 150],
+      lightColor:       '#0333b6',
+      sound:            'default',
     });
   }
 
-  // Get Expo push token — works in Expo Go
+  // SDK 54: getExpoPushTokenAsync still works in dev builds
   let token;
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({
@@ -92,6 +99,7 @@ export async function unregisterToken(token, accessToken) {
 }
 
 export function setupNotificationListeners(onReceive, onTap) {
+  // SDK 54: same API, addNotificationReceivedListener unchanged
   const sub1 = Notifications.addNotificationReceivedListener(notification => {
     console.log('[Push] Received:', notification.request.content.title);
     onReceive && onReceive(notification);
@@ -102,6 +110,8 @@ export function setupNotificationListeners(onReceive, onTap) {
     onTap && onTap(response);
   });
 
-  // Return cleanup
-  return () => { sub1.remove(); sub2.remove(); };
+  return () => {
+    sub1.remove();
+    sub2.remove();
+  };
 }

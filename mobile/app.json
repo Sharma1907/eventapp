@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": ["**/*"],
-    "owner": "coder2026",
+    "owner": "coder2026s-team",
     "extra": {
       "eas": {
         "projectId": "afa28d7e-10d5-4e85-bed4-783b7371a56b"
@@ -15,24 +15,23 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.etd2026.app",
-      "newArchEnabled": false
+      "bundleIdentifier": "com.etd2026.app"
     },
     "android": {
-      "package": "com.etd2026.app",
-      "newArchEnabled": false
+      "package": "com.etd2026.app"
     },
     "scheme": "etd2026",
     "plugins": [
       [
         "expo-notifications",
         {
-          "icon": "./assets/notification-icon.png",
+          "icon": "./assets/icon.png",
           "color": "#0333b6",
           "sounds": []
         }
       ],
-      "expo-image-picker"
+      "expo-image-picker",
+      "expo-dev-client"
     ]
   }
 }
