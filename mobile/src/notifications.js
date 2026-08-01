@@ -13,7 +13,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-const EXPO_PROJECT_ID = 'afa28d7e-10d5-4e85-bed4-783b7371a60b';
+const EXPO_PROJECT_ID = 'afa28d7e-10d5-4e85-bed4-783b7371a56b';
 
 export async function registerForPushNotifications(accessToken) {
   if (!Device.isDevice) {
