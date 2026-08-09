@@ -1,0 +1,155 @@
+{% extends 'panel/base.html' %}
+{% block title %}Schedule — ETD 2026 Admin{% endblock %}
+{% block page_title %}Conference Schedule{% endblock %}
+{% block page_subtitle %}Manage sessions, sub-sessions, and feedback forms{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <a href="?day=1" class="btn {% if day_filter == '1' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
+            Day 1 <span style="opacity:.7;font-size:11px;">({{ stats.day1 }})</span>
+        </a>
+        <a href="?day=2" class="btn {% if day_filter == '2' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
+            Day 2 <span style="opacity:.7;font-size:11px;">({{ stats.day2 }})</span>
+        </a>
+        <a href="?day=3" class="btn {% if day_filter == '3' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
+            Day 3 <span style="opacity:.7;font-size:11px;">({{ stats.day3 }})</span>
+        </a>
+        <a href="?" class="btn {% if not day_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All Days</a>
+    </div>
+    <a href="{% url 'schedule_create' %}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> Add Session
+    </a>
+</div>
+
+{% if messages %}{% for m in messages %}
+<div class="alert alert-{% if m.tags == 'error' %}error{% elif m.tags == 'success' %}success{% else %}warning{% endif %}">
+    <i class="fas fa-circle-check"></i> {{ m }}
+</div>{% endfor %}{% endif %}
+
+<!-- Stats row -->
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;">
+    {% for label,val,color in stats_list|default:'' %}{% endfor %}
+    <div class="stat-card" style="padding:16px;">
+        <div style="font-size:24px;font-weight:800;color:var(--text);">{{ stats.total }}</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">Total Sessions</div>
+    </div>
+    <div class="stat-card" style="padding:16px;">
+        <div style="font-size:24px;font-weight:800;color:#f59e0b;">{{ stats.featured }}</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">★ Featured</div>
+    </div>
+    <div class="stat-card" style="padding:16px;">
+        <div style="font-size:24px;font-weight:800;color:var(--primary);">{{ stats.day1 }}</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">Day 1</div>
+    </div>
+    <div class="stat-card" style="padding:16px;">
+        <div style="font-size:24px;font-weight:800;color:var(--primary);">{{ stats.day2 }}</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">Day 2</div>
+    </div>
+    <div class="stat-card" style="padding:16px;">
+        <div style="font-size:24px;font-weight:800;color:var(--primary);">{{ stats.day3 }}</div>
+        <div style="font-size:12px;color:var(--text-tertiary);margin-top:2px;">Day 3</div>
+    </div>
+</div>
+
+<!-- Session table -->
+<div class="card">
+    <div class="card-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Day</th>
+                    <th>Time</th>
+                    <th>Session</th>
+                    <th>Type</th>
+                    <th>Room</th>
+                    <th>Flags</th>
+                    <th>Feedback</th>
+                    <th>Responses</th>
+                    <th style="text-align:right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for sess in sessions %}
+            <tr>
+                <td><span class="badge badge-info">Day {{ sess.day }}</span></td>
+                <td style="font-size:12px;font-weight:600;white-space:nowrap;color:var(--text-secondary);">
+                    {{ sess.start_datetime|date:"H:i" }} – {{ sess.end_datetime|date:"H:i" }}
+                </td>
+                <td>
+                    <div style="font-weight:600;font-size:14px;">
+                        {% if sess.is_featured %}<span style="color:#f59e0b;margin-right:4px;">★</span>{% endif %}
+                        {{ sess.title }}
+                    </div>
+                    {% if sess.sub_sessions.count %}
+                    <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">
+                        <i class="fas fa-sitemap" style="font-size:9px;"></i>
+                        {{ sess.sub_sessions.count }} sub-session{{ sess.sub_sessions.count|pluralize }}
+                    </div>
+                    {% endif %}
+                    {% if sess.room %}
+                    <div style="font-size:11px;color:var(--text-tertiary);">
+                        <i class="fas fa-location-dot" style="font-size:9px;"></i> {{ sess.room }}
+                    </div>
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="badge
+                        {% if sess.session_type == 'keynote' %}badge-info
+                        {% elif sess.session_type == 'break' or sess.session_type == 'meal' %}badge-success
+                        {% elif sess.session_type == 'ceremony' %}badge-warning
+                        {% else %}badge-info{% endif %}">
+                        {{ sess.get_session_type_display }}
+                    </span>
+                </td>
+                <td style="font-size:12px;color:var(--text-secondary);">{{ sess.room|default:"—" }}</td>
+                <td style="font-size:11px;">
+                    {% if not sess.is_published %}<span class="badge badge-danger">Draft</span>{% endif %}
+                    {% if sess.is_parallel %}<span class="badge badge-warning">Parallel</span>{% endif %}
+                </td>
+                <td>
+                    {% if sess.feedback_enabled %}
+                        {% if sess.feedback_open %}
+                            <span class="badge badge-success">Open</span>
+                        {% else %}
+                            <span class="badge badge-warning">Enabled</span>
+                        {% endif %}
+                    {% else %}
+                        <span style="color:var(--text-tertiary);font-size:12px;">—</span>
+                    {% endif %}
+                </td>
+                <td style="font-weight:700;color:var(--primary);">
+                    {{ sess.feedback_responses.count }}
+                </td>
+                <td style="text-align:right;white-space:nowrap;">
+                    <div style="display:flex;gap:6px;justify-content:flex-end;">
+                        {% if sess.feedback_enabled %}
+                        <a href="{% url 'schedule_analytics' sess.pk %}" class="btn btn-secondary btn-sm" title="Analytics">
+                            <i class="fas fa-chart-bar"></i>
+                        </a>
+                        <a href="{% url 'schedule_feedback_manage' sess.pk %}" class="btn btn-secondary btn-sm" title="Feedback Form">
+                            <i class="fas fa-clipboard-list"></i>
+                        </a>
+                        {% endif %}
+                        <a href="{% url 'schedule_edit' sess.pk %}" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-pen"></i> Edit
+                        </a>
+                        <form method="post" action="{% url 'schedule_delete' sess.pk %}"
+                              onsubmit="return confirm('Delete \'{{ sess.title }}\'? This also deletes sub-sessions and feedback.')">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger btn-sm"><i class="fas fa-trash"></i></button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="9">
+                <div class="empty-state"><i class="fas fa-calendar-xmark"></i><h3>No sessions found</h3>
+                <a href="{% url 'schedule_create' %}" class="btn btn-primary">Add First Session</a></div>
+            </td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

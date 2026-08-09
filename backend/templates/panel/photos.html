@@ -1,0 +1,153 @@
+{% extends "panel/base.html" %}
+{% block title %}Photo Moderation{% endblock %}
+{% block content %}
+<div style="max-width:1200px;margin:0 auto">
+
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:16px">
+    <div>
+      <h1 style="font-size:28px;font-weight:800;color:var(--text);margin:0">Photo Wall</h1>
+      <p style="color:var(--text-sec);margin:6px 0 0;font-size:14px">Moderate uploads. Only checked-in participants can upload and view approved photos.</p>
+    </div>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="toggle_window">
+        <button type="submit" style="
+          padding:12px 22px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:14px;
+          background:{% if cfg.upload_open %}#ef4444{% else %}#10b981{% endif %};color:#fff">
+          {% if cfg.upload_open %}🔒 Close Uploads{% else %}🔓 Open Uploads{% endif %}
+        </button>
+      </form>
+
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="toggle_auto">
+        <button type="submit" style="
+          padding:12px 22px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:14px;
+          background:{% if cfg.auto_approve %}#f59e0b{% else %}var(--bg-sec){% endif %};
+          color:{% if cfg.auto_approve %}#fff{% else %}var(--text){% endif %};
+          border:1px solid var(--border)">
+          ⚡ Auto-approve: {% if cfg.auto_approve %}ON{% else %}OFF{% endif %}
+        </button>
+      </form>
+
+      {% if counts.pending > 0 %}
+      <form method="post" onsubmit="return confirm('Approve all {{ counts.pending }} pending photos?')">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="approve_all">
+        <button type="submit" style="padding:12px 22px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:14px;background:var(--brand);color:#fff">
+          ✓ Approve All ({{ counts.pending }})
+        </button>
+      </form>
+      {% endif %}
+
+    </div>
+  </div>
+
+  <div style="display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap">
+    <div style="background:{% if cfg.upload_open %}#d1fae5{% else %}#fee2e2{% endif %};padding:12px 18px;border-radius:12px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">{% if cfg.upload_open %}🟢{% else %}🔴{% endif %}</span>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:{% if cfg.upload_open %}#065f46{% else %}#991b1b{% endif %};letter-spacing:0.6px">UPLOAD WINDOW</div>
+        <div style="font-size:13px;font-weight:600;color:{% if cfg.upload_open %}#047857{% else %}#b91c1c{% endif %}">{% if cfg.upload_open %}Open{% else %}Closed{% endif %}</div>
+      </div>
+    </div>
+    <div style="background:{% if cfg.auto_approve %}#fef3c7{% else %}var(--bg-sec){% endif %};padding:12px 18px;border-radius:12px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px">{% if cfg.auto_approve %}⚡{% else %}🔎{% endif %}</span>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-sec);letter-spacing:0.6px">AUTO-APPROVE</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text)">{% if cfg.auto_approve %}On — photos go live instantly{% else %}Off — manual review required{% endif %}</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:4px;margin-bottom:20px">
+    {% for t, label in tabs %}
+    <a href="?tab={{ t }}" style="
+      padding:10px 18px;border-radius:12px;text-decoration:none;font-weight:700;font-size:13px;
+      background:{% if tab == t %}var(--brand){% else %}var(--bg-sec){% endif %};
+      color:{% if tab == t %}#fff{% else %}var(--text-sec){% endif %}">
+      {{ label }} ({{ counts|get_item:t }})
+    </a>
+    {% endfor %}
+  </div>
+
+  {% if photos %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
+    {% for photo in photos %}
+    <div style="background:#fff;border-radius:18px;border:1px solid var(--border);overflow:hidden">
+      <div style="position:relative">
+        <img src="{{ photo.image.url }}" alt="" style="width:100%;height:200px;object-fit:cover;display:block">
+        {% if tab == 'pending' %}
+        <div style="position:absolute;top:8px;right:8px;background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:4px 8px;border-radius:8px">PENDING</div>
+        {% elif tab == 'approved' %}
+        <div style="position:absolute;top:8px;right:8px;background:#10b981;color:#fff;font-size:10px;font-weight:700;padding:4px 8px;border-radius:8px">APPROVED</div>
+        {% else %}
+        <div style="position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;padding:4px 8px;border-radius:8px">REJECTED</div>
+        {% endif %}
+      </div>
+
+      <div style="padding:14px">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px">{{ photo.uploader.get_full_name|default:photo.uploader.email }}</div>
+        <div style="font-size:11px;color:var(--text-sec);margin-bottom:6px">{{ photo.uploader.email }}</div>
+        {% if photo.session %}
+        <div style="font-size:11px;background:var(--brand-light);color:var(--brand);padding:4px 8px;border-radius:8px;display:inline-block;margin-bottom:6px">📍 {{ photo.session.title }}</div>
+        {% else %}
+        <div style="font-size:11px;background:#f1f5f9;color:var(--text-sec);padding:4px 8px;border-radius:8px;display:inline-block;margin-bottom:6px">🌐 General Wall</div>
+        {% endif %}
+        {% if photo.caption %}
+        <p style="font-size:12px;color:var(--text-sec);margin:4px 0 8px;line-height:1.5">{{ photo.caption }}</p>
+        {% endif %}
+        {% if photo.rejected_reason %}
+        <p style="font-size:11px;color:#ef4444;margin:4px 0 8px">Reason: {{ photo.rejected_reason }}</p>
+        {% endif %}
+        <div style="font-size:11px;color:var(--text-sec);margin-bottom:12px">{{ photo.created_at|timesince }} ago</div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          {% if tab == 'pending' or tab == 'rejected' %}
+          <form method="post" style="flex:1">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="approve">
+            <input type="hidden" name="pk" value="{{ photo.pk }}">
+            <button type="submit" style="width:100%;padding:8px;background:#10b981;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:12px">✓ Approve</button>
+          </form>
+          {% endif %}
+
+          {% if tab == 'pending' or tab == 'approved' %}
+          <form method="post" style="flex:1" onsubmit="
+            var r=prompt('Reason for rejection (optional):','');
+            if(r===null)return false;
+            this.querySelector('[name=reason]').value=r;return true;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="reject">
+            <input type="hidden" name="pk" value="{{ photo.pk }}">
+            <input type="hidden" name="reason" value="">
+            <button type="submit" style="width:100%;padding:8px;background:#ef4444;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:12px">✗ Reject</button>
+          </form>
+          {% endif %}
+
+          <form method="post" onsubmit="return confirm('Delete this photo permanently?')">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="pk" value="{{ photo.pk }}">
+            <button type="submit" style="padding:8px 12px;background:var(--bg-sec);color:var(--text-sec);border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:12px">🗑</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="text-align:center;padding:60px 20px;background:#fff;border-radius:18px;border:1px solid var(--border)">
+    <div style="font-size:40px;margin-bottom:12px">📷</div>
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px">No {{ tab }} photos</div>
+    <div style="font-size:13px;color:var(--text-sec)">
+      {% if tab == 'pending' %}No photos waiting for review.{% elif tab == 'approved' %}No approved photos yet.{% else %}No rejected photos.{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

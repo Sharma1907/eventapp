@@ -1,0 +1,78 @@
+{% extends "panel/base.html" %}
+{% block title %}Add Participant — ETD 2026{% endblock %}
+{% block page_title %}Add Participant{% endblock %}
+{% block page_subtitle %}Create a single participant account{% endblock %}
+
+{% block content %}
+{% if messages %}
+  {% for m in messages %}
+    <div class="alert {% if 'error' in m.tags %}alert-error{% elif 'warning' in m.tags %}alert-warning{% else %}alert-success{% endif %}">
+      <i class="fas {% if 'error' in m.tags %}fa-circle-xmark{% elif 'warning' in m.tags %}fa-triangle-exclamation{% else %}fa-circle-check{% endif %}"></i>
+      {{ m }}
+    </div>
+  {% endfor %}
+{% endif %}
+
+<div class="card" style="max-width:640px;">
+  <div class="card-header">
+    <h3>Participant Details</h3>
+    <span style="font-size:13px;color:var(--text-tertiary);">Reg ID: <code>{{ next_reg_id }}</code> (auto)</span>
+  </div>
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div style="grid-column:1/-1;">
+          <label class="form-label">Full Name *</label>
+          <input type="text" name="full_name" value="{{ form.full_name|default:'' }}" class="form-control" required>
+        </div>
+
+        <div style="grid-column:1/-1;">
+          <label class="form-label">Email *</label>
+          <input type="email" name="email" value="{{ form.email|default:'' }}" class="form-control" required>
+        </div>
+
+        <div>
+          <label class="form-label">Gender</label>
+          <select name="gender" class="form-control">
+            <option value="">—</option>
+            <option value="Male" {% if form.gender == 'Male' %}selected{% endif %}>Male</option>
+            <option value="Female" {% if form.gender == 'Female' %}selected{% endif %}>Female</option>
+            <option value="Other" {% if form.gender == 'Other' %}selected{% endif %}>Other</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="form-label">Mobile</label>
+          <input type="text" name="mobile" value="{{ form.mobile|default:'' }}" class="form-control">
+        </div>
+
+        <div style="grid-column:1/-1;">
+          <label class="form-label">Designation</label>
+          <input type="text" name="designation" value="{{ form.designation|default:'' }}" class="form-control">
+        </div>
+
+        <div style="grid-column:1/-1;">
+          <label class="form-label">Organisation / Institute</label>
+          <input type="text" name="organisation" value="{{ form.organisation|default:'' }}" class="form-control">
+        </div>
+      </div>
+
+      <hr style="margin:24px 0;border:none;border-top:1px solid var(--border);">
+
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:20px;">
+        <input type="checkbox" name="send_email" style="width:18px;height:18px;">
+        <span style="font-size:14px;">Send login credentials via email</span>
+      </label>
+
+      <div style="display:flex;gap:12px;">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-user-plus"></i> Create Participant
+        </button>
+        <a href="{% url 'participants_list' %}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

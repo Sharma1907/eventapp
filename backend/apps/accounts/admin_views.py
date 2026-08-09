@@ -11,6 +11,7 @@ from django.contrib import messages
 from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import ParticipantImport
@@ -27,17 +28,18 @@ User = get_user_model()
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
-# Expected CSV headers (case-insensitive match)
 _CSV_HEADERS = [
-    'Salutation', 'Full Name', 'Email ID', 'Gender',
+    'Salutation', 'Full Name', 'Registration ID', 'Email ID', 'Gender',
     'Designation', 'Organisation / Institute',
     'Mobile Number', 'Address', 'PIN / Postal Code',
 ]
 
 _HEADER_MAP = {
-    # normalised lowercase → model field
     'salutation':               'salutation',
     'full name':                'full_name',
+    'registration id':          'registration_id',
+    'registration_id':          'registration_id',
+    'reg id':                   'registration_id',
     'email id':                 'email',
     'email':                    'email',
     'gender':                   'gender',
@@ -55,7 +57,6 @@ _HEADER_MAP = {
 
 
 def _generate_temp_password(length=12):
-    """Temp password: letters + digits, always has upper + lower + digit."""
     alphabet = string.ascii_letters + string.digits
     while True:
         pwd = ''.join(secrets.choice(alphabet) for _ in range(length))
@@ -66,26 +67,36 @@ def _generate_temp_password(length=12):
 
 
 def _split_name(full_name):
-    """Split 'First Last' → (first, last). If single word, last=''."""
     parts = full_name.strip().split(None, 1)
     return (parts[0], parts[1]) if len(parts) == 2 else (parts[0] if parts else '', '')
 
 
+def _next_single_reg_id():
+    """Generate next ETD-2026-S-XXX for single-add participants."""
+    last = (
+        User.objects.filter(registration_id__startswith='ETD-2026-S-')
+        .order_by('-registration_id')
+        .values_list('registration_id', flat=True)
+        .first()
+    )
+    if last:
+        try:
+            num = int(last.split('-')[-1]) + 1
+        except (ValueError, IndexError):
+            num = 1
+    else:
+        num = 1
+    return f'ETD-2026-S-{num:03d}'
+
+
 def _parse_csv_bytes(raw_bytes):
-    """
-    Parse CSV/Excel bytes into list of dicts.
-    Returns (rows, errors) where rows are clean dicts and errors are strings.
-    Supports .csv and basic .xlsx via openpyxl if installed; falls back to csv.
-    """
     rows, errors = [], []
 
-    # Try Excel first
     if _looks_like_excel(raw_bytes):
         return _parse_excel(raw_bytes)
 
-    # CSV path
     try:
-        text = raw_bytes.decode('utf-8-sig')  # handles BOM
+        text = raw_bytes.decode('utf-8-sig')
     except UnicodeDecodeError:
         text = raw_bytes.decode('latin-1')
 
@@ -94,16 +105,12 @@ def _parse_csv_bytes(raw_bytes):
     if not reader.fieldnames:
         return [], ['File appears empty or has no header row.']
 
-    # Build column mapping from actual headers
     col_map = {}
     for h in reader.fieldnames:
         key = h.strip().lower()
         if key in _HEADER_MAP:
             col_map[h] = _HEADER_MAP[key]
 
-    if 'email' not in col_map.values() and 'Email ID' not in (col_map.values()):
-        # re-check
-        pass
     has_email = any(v == 'email' for v in col_map.values())
     has_name  = any(v == 'full_name' for v in col_map.values())
 
@@ -132,12 +139,10 @@ def _parse_csv_bytes(raw_bytes):
 
 
 def _looks_like_excel(raw_bytes):
-    # XLSX magic bytes: PK\x03\x04
     return raw_bytes[:4] == b'PK\x03\x04'
 
 
 def _parse_excel(raw_bytes):
-    """Parse .xlsx — requires openpyxl (already pulled in by Django/Pillow chain usually)."""
     try:
         import openpyxl
     except ImportError:
@@ -153,7 +158,7 @@ def _parse_excel(raw_bytes):
 
     headers = [str(h).strip() if h is not None else '' for h in all_rows[0]]
 
-    col_map = {}  # index → field name
+    col_map = {}
     for i, h in enumerate(headers):
         key = h.lower()
         if key in _HEADER_MAP:
@@ -187,7 +192,6 @@ def _parse_excel(raw_bytes):
 
 
 def _send_credentials_email(email, full_name, temp_password):
-    """Send welcome + credentials email. Returns True on success."""
     subject = "ETD 2026 — Your Login Credentials"
     body = f"""Dear {full_name},
 
@@ -198,7 +202,7 @@ Your account has been created. Use the details below to log in:
   Email:    {email}
   Password: {temp_password}
 
-Login at: https://etd2026.iitd.ac.in  (update this URL once live)
+Login at: https://etd2026.iitd.ac.in
 
 IMPORTANT: You will be asked to change your password on first login.
 
@@ -248,27 +252,27 @@ def admin_logout(request):
 
 @login_required(login_url='/panel/login/')
 def admin_dashboard(request):
-    total = User.objects.filter(role='participant').count()
+    from apps.checkins.models import CheckIn
+    total_participants = User.objects.filter(role='participant').count()
+    checked_in = CheckIn.objects.filter(checkin_type='conference').count()
+    checkin_pct = round(checked_in * 100 / total_participants) if total_participants else 0
+
     context = {
-        'total_participants': total or 480,   # falls back to mock until data exists
-        'checked_in': 312,
-        'checkin_percent': 65,
-        'photos_uploaded': 847,
-        'photos_pending': 34,
-        'active_polls': 12,
-        'profile_complete_percent': 58,
-        'today_events': [
-            {'time': '09:00', 'title': 'Opening Ceremony',       'room': 'Hall A',    'status': 'live'},
-            {'time': '10:30', 'title': 'Keynote: AI in Research', 'room': 'Hall A',    'status': 'upcoming'},
-            {'time': '13:00', 'title': 'Lunch Break',             'room': 'Cafeteria', 'status': 'upcoming'},
-            {'time': '14:30', 'title': 'Workshop: Data Science',  'room': 'Room 201',  'status': 'upcoming'},
-        ],
-        'recent_checkins': [
-            {'name': 'Rahul Sharma', 'time': '2 min ago',  'id': 'CONF-0042'},
-            {'name': 'Priya Patel',  'time': '5 min ago',  'id': 'CONF-0108'},
-            {'name': 'Amit Kumar',   'time': '8 min ago',  'id': 'CONF-0156'},
-            {'name': 'Sneha Gupta',  'time': '12 min ago', 'id': 'CONF-0201'},
-        ],
+        'total_participants': total_participants,
+        'checked_in': checked_in,
+        'checkin_percent': checkin_pct,
+        'photos_uploaded': 0,
+        'photos_pending': 0,
+        'active_polls': 0,
+        'profile_complete_percent': round(
+            User.objects.filter(role='participant', profile_complete=True).count() * 100 / total_participants
+        ) if total_participants else 0,
+        'today_events': [],
+        'recent_checkins': list(
+            CheckIn.objects.filter(checkin_type='conference')
+            .select_related('user')
+            .order_by('-scanned_at')[:5]
+        ),
     }
     return render(request, 'panel/dashboard.html', context)
 
@@ -277,7 +281,6 @@ def admin_dashboard(request):
 
 @login_required(login_url='/panel/login/')
 def participants_upload(request):
-    """Step 1: show upload form or handle file POST."""
     if request.method == 'POST':
         f = request.FILES.get('csv_file')
         if not f:
@@ -292,19 +295,11 @@ def participants_upload(request):
                 messages.error(request, e)
             return redirect('participants_upload')
 
-        # Wipe any previous pending rows uploaded by this admin
         ParticipantImport.objects.filter(
             uploaded_by=request.user, status='pending'
         ).delete()
 
-        # Bulk-stage valid rows
-        objs = [
-            ParticipantImport(
-                uploaded_by=request.user,
-                **row,
-            )
-            for row in rows
-        ]
+        objs = [ParticipantImport(uploaded_by=request.user, **row) for row in rows]
         ParticipantImport.objects.bulk_create(objs, ignore_conflicts=False)
 
         if errors:
@@ -318,35 +313,46 @@ def participants_upload(request):
 
 @login_required(login_url='/panel/login/')
 def participants_preview(request):
-    """Step 2: show staged rows, let admin delete bad ones, then confirm."""
     pending = ParticipantImport.objects.filter(
         uploaded_by=request.user, status='pending'
     ).order_by('id')
 
-    # Check which emails already exist as users
     existing_emails = set(
         User.objects.filter(
             email__in=[p.email for p in pending]
         ).values_list('email', flat=True)
     )
 
+    existing_reg_ids = set(
+        User.objects.filter(
+            registration_id__in=[p.registration_id for p in pending if p.registration_id]
+        ).values_list('registration_id', flat=True)
+    )
+
     rows_display = []
     for p in pending:
+        dup_reason = ''
+        if p.email in existing_emails:
+            dup_reason = 'Email exists'
+        elif p.registration_id and p.registration_id in existing_reg_ids:
+            dup_reason = 'Reg ID exists'
         rows_display.append({
             'obj': p,
-            'duplicate': p.email in existing_emails,
+            'duplicate': bool(dup_reason),
+            'dup_reason': dup_reason,
         })
+
+    duplicates = sum(1 for r in rows_display if r['duplicate'])
 
     return render(request, 'panel/participants_preview.html', {
         'rows': rows_display,
         'total': pending.count(),
-        'duplicates': len(existing_emails),
+        'duplicates': duplicates,
     })
 
 
 @login_required(login_url='/panel/login/')
 def participants_delete_row(request, pk):
-    """Delete a single staged row before confirming."""
     if request.method == 'POST':
         ParticipantImport.objects.filter(
             pk=pk, uploaded_by=request.user, status='pending'
@@ -356,7 +362,6 @@ def participants_delete_row(request, pk):
 
 @login_required(login_url='/panel/login/')
 def participants_confirm(request):
-    """Step 3: create User records + send emails for all pending rows."""
     if request.method != 'POST':
         return redirect('participants_preview')
 
@@ -368,15 +373,23 @@ def participants_confirm(request):
         messages.error(request, 'Nothing to import.')
         return redirect('participants_upload')
 
+    send_email = request.POST.get('send_email') == 'on'
+
     created_count = 0
     skipped_count = 0
     email_failed  = 0
 
     for staged in pending:
-        # Skip duplicates
         if User.objects.filter(email=staged.email).exists():
             staged.status     = 'failed'
             staged.error_note = 'Email already registered.'
+            staged.save(update_fields=['status', 'error_note'])
+            skipped_count += 1
+            continue
+
+        if staged.registration_id and User.objects.filter(registration_id=staged.registration_id).exists():
+            staged.status     = 'failed'
+            staged.error_note = 'Registration ID already exists.'
             staged.save(update_fields=['status', 'error_note'])
             skipped_count += 1
             continue
@@ -387,30 +400,32 @@ def participants_confirm(request):
         try:
             with transaction.atomic():
                 User.objects.create_user(
-                    email        = staged.email,
-                    password     = temp_password,
-                    first_name   = first_name,
-                    last_name    = last_name,
-                    phone        = staged.mobile,
-                    affiliation  = staged.organisation,
-                    role         = 'participant',
+                    email           = staged.email,
+                    password        = temp_password,
+                    first_name      = first_name,
+                    last_name       = last_name,
+                    phone           = staged.mobile,
+                    affiliation     = staged.organisation,
+                    designation     = staged.designation,
+                    gender          = staged.gender,
+                    registration_id = staged.registration_id or None,
+                    role            = 'participant',
                     must_change_password = True,
-                    is_active    = True,
+                    is_active       = True,
                 )
                 staged.status = 'imported'
                 staged.save(update_fields=['status'])
 
-            # Award signup points
             if HAS_LEADERBOARD:
                 try:
                     award_points(User.objects.get(email=staged.email), PointAction.SIGNUP, 'Welcome to ETD 2026')
                 except Exception:
-                    pass  # non-critical
+                    pass
 
-            # Send outside transaction so a failed email doesn't rollback the user
-            ok = _send_credentials_email(staged.email, staged.full_name, temp_password)
-            if not ok:
-                email_failed += 1
+            if send_email:
+                ok = _send_credentials_email(staged.email, staged.full_name, temp_password)
+                if not ok:
+                    email_failed += 1
 
             created_count += 1
 
@@ -421,41 +436,112 @@ def participants_confirm(request):
             staged.save(update_fields=['status', 'error_note'])
             skipped_count += 1
 
-    # Summary message
     msg = f"Import done: {created_count} created, {skipped_count} skipped."
-    if email_failed:
-        msg += f" ⚠ {email_failed} credential email(s) failed — check server logs."
+    if send_email and email_failed:
+        msg += f" ⚠ {email_failed} credential email(s) failed."
+    elif not send_email:
+        msg += " (Emails not sent)"
     messages.success(request, msg)
     return redirect('participants_list')
 
 
 @login_required(login_url='/panel/login/')
 def participants_list(request):
-    """Show all participant users with basic info."""
+    search = request.GET.get('search', '').strip()
     participants = User.objects.filter(role='participant').order_by('first_name', 'last_name')
-    total = participants.count()
-    password_set = participants.filter(must_change_password=False).count()
+    if search:
+        participants = participants.filter(
+            Q(first_name__icontains=search) | Q(last_name__icontains=search) |
+            Q(email__icontains=search) | Q(registration_id__icontains=search)
+        )
+    total_all = User.objects.filter(role='participant').count()
+    password_set = User.objects.filter(role='participant', must_change_password=False).count()
     return render(request, 'panel/participants_list.html', {
         'participants': participants,
-        'total': total,
+        'total': total_all,
         'password_set': password_set,
-        'password_pending': total - password_set,
+        'password_pending': total_all - password_set,
+        'search': search,
+        'showing': participants.count(),
     })
 
 
+@login_required(login_url='/panel/login/')
+def participant_add(request):
+    """Add a single participant manually."""
+    if request.method == 'POST':
+        email = request.POST.get('email', '').strip().lower()
+        full_name = request.POST.get('full_name', '').strip()
+
+        if not email or not full_name:
+            messages.error(request, 'Full Name and Email are required.')
+            return render(request, 'panel/participant_add.html', {'form': request.POST})
+
+        if User.objects.filter(email=email).exists():
+            messages.error(request, f'Email {email} is already registered.')
+            return render(request, 'panel/participant_add.html', {'form': request.POST})
+
+        first_name, last_name = _split_name(full_name)
+        temp_password = _generate_temp_password()
+        reg_id = _next_single_reg_id()
+
+        try:
+            User.objects.create_user(
+                email           = email,
+                password        = temp_password,
+                first_name      = first_name,
+                last_name       = last_name,
+                phone           = request.POST.get('mobile', '').strip(),
+                affiliation     = request.POST.get('organisation', '').strip(),
+                designation     = request.POST.get('designation', '').strip(),
+                gender          = request.POST.get('gender', '').strip(),
+                registration_id = reg_id,
+                role            = 'participant',
+                must_change_password = True,
+                is_active       = True,
+            )
+        except Exception as exc:
+            messages.error(request, f'Error creating user: {exc}')
+            return render(request, 'panel/participant_add.html', {'form': request.POST})
+
+        if HAS_LEADERBOARD:
+            try:
+                award_points(User.objects.get(email=email), PointAction.SIGNUP, 'Welcome to ETD 2026')
+            except Exception:
+                pass
+
+        send_email = request.POST.get('send_email') == 'on'
+        if send_email:
+            ok = _send_credentials_email(email, full_name, temp_password)
+            if not ok:
+                messages.warning(request, f'User created ({reg_id}) but credential email failed.')
+                return redirect('participants_list')
+
+        email_note = ' and credentials emailed' if send_email else ''
+        messages.success(request, f'{full_name} added ({reg_id}){email_note}.')
+        return redirect('participants_list')
+
+    return render(request, 'panel/participant_add.html', {
+        'form': {},
+        'next_reg_id': _next_single_reg_id(),
+    })
 
 
 @login_required(login_url='/panel/login/')
 def participant_edit(request, pk):
-    """Edit a single participant."""
     user = get_object_or_404(User, pk=pk, role='participant')
 
     if request.method == 'POST':
-        user.first_name  = request.POST.get('first_name', user.first_name).strip()
-        user.last_name   = request.POST.get('last_name', user.last_name).strip()
-        user.email       = request.POST.get('email', user.email).strip().lower()
-        user.phone       = request.POST.get('phone', user.phone).strip()
-        user.affiliation = request.POST.get('affiliation', user.affiliation).strip()
+        user.first_name      = request.POST.get('first_name', user.first_name).strip()
+        user.last_name       = request.POST.get('last_name', user.last_name).strip()
+        user.email           = request.POST.get('email', user.email).strip().lower()
+        user.phone           = request.POST.get('phone', user.phone).strip()
+        user.affiliation     = request.POST.get('affiliation', user.affiliation).strip()
+        user.designation     = request.POST.get('designation', '').strip()
+        user.gender          = request.POST.get('gender', '').strip()
+        new_reg = request.POST.get('registration_id', '').strip()
+        if new_reg:
+            user.registration_id = new_reg
 
         try:
             user.save()
@@ -471,7 +557,6 @@ def participant_edit(request, pk):
 
 @login_required(login_url='/panel/login/')
 def participant_delete(request, pk):
-    """Delete a single participant."""
     user = get_object_or_404(User, pk=pk, role='participant')
 
     if request.method == 'POST':
@@ -485,21 +570,18 @@ def participant_delete(request, pk):
 # ── CSV template download ──────────────────────────────────────────────────
 
 def participants_template(request):
-    """Return a ready-to-fill CSV template."""
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="etd2026_participants_template.csv"'
 
     writer = csv.writer(response)
     writer.writerow(_CSV_HEADERS)
-    # One example row so the format is obvious
-    writer.writerow(['Dr.', 'Amit Kumar', 'amit.kumar@example.com', 'Male',
+    writer.writerow(['Dr.', 'Amit Kumar', 'ETD-2026-R-001', 'amit.kumar@example.com', 'Male',
                      'Associate Professor', 'IIT Delhi', '9876543210',
                      '123 Main Street, New Delhi', '110016'])
     return response
 
 
 # ── forgot password ────────────────────────────────────────────────────────
-# Uses Django's built-in token generator — no new model needed.
 
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -507,7 +589,6 @@ from django.utils.encoding import force_bytes, force_str
 
 
 def password_reset_request(request):
-    """Public page: enter email → receive reset link."""
     if request.method == 'POST':
         email = request.POST.get('email', '').strip().lower()
         try:
@@ -532,20 +613,15 @@ def password_reset_request(request):
                 fail_silently  = False,
             )
         except User.DoesNotExist:
-            pass  # silent — don't reveal whether email exists
+            pass
 
-        # Always show the same message (prevents email enumeration)
-        messages.success(
-            request,
-            'If that email is registered, a reset link has been sent.'
-        )
+        messages.success(request, 'If that email is registered, a reset link has been sent.')
         return redirect('password_reset_request')
 
     return render(request, 'panel/password_reset_request.html')
 
 
 def password_reset_confirm(request, uidb64, token):
-    """Public page: set new password via token link."""
     try:
         uid  = force_str(urlsafe_base64_decode(uidb64))
         user = User.objects.get(pk=uid)
@@ -579,19 +655,14 @@ def password_reset_confirm(request, uidb64, token):
 
 @login_required(login_url='/panel/login/')
 def users_manage(request):
-    """List ALL users (not just participants) with status indicators."""
-    from django.db.models import Q
-
     search = request.GET.get('search', '').strip()
     role   = request.GET.get('role', '').strip()
 
     qs = User.objects.all().order_by('role', 'first_name', 'last_name')
     if search:
         qs = qs.filter(
-            Q(first_name__icontains=search) |
-            Q(last_name__icontains=search)  |
-            Q(email__icontains=search)      |
-            Q(registration_id__icontains=search)
+            Q(first_name__icontains=search) | Q(last_name__icontains=search) |
+            Q(email__icontains=search) | Q(registration_id__icontains=search)
         )
     if role:
         qs = qs.filter(role=role)
@@ -611,7 +682,6 @@ def users_manage(request):
 
 @login_required(login_url='/panel/login/')
 def user_warn(request, pk):
-    """Warn a user — POST with note."""
     user_target = get_object_or_404(User, pk=pk)
     if user_target.role in ('super_admin', 'mgmt_admin'):
         messages.error(request, 'Cannot warn admin accounts.')
@@ -626,7 +696,6 @@ def user_warn(request, pk):
         user_target.warning_note = note
         user_target.save(update_fields=['warning_note'])
 
-        # Send push notification
         try:
             from apps.notifications.models import Notification as Notif
             from apps.notifications import fcm
@@ -649,7 +718,6 @@ def user_warn(request, pk):
 
 @login_required(login_url='/panel/login/')
 def user_suspend(request, pk):
-    """Suspend a user — POST with reason."""
     user_target = get_object_or_404(User, pk=pk)
     if user_target.role in ('super_admin', 'mgmt_admin'):
         messages.error(request, 'Cannot suspend admin accounts.')
@@ -661,14 +729,12 @@ def user_suspend(request, pk):
         user_target.suspended_reason = reason
         user_target.save(update_fields=['is_active', 'suspended_reason'])
 
-        # Deactivate device tokens
         try:
             from apps.notifications.models import DeviceToken
             DeviceToken.objects.filter(user=user_target).update(is_active=False)
         except Exception:
             pass
 
-        # Send email
         try:
             send_mail(
                 subject='ETD 2026 — Account Suspended',
@@ -693,7 +759,6 @@ def user_suspend(request, pk):
 
 @login_required(login_url='/panel/login/')
 def user_unsuspend(request, pk):
-    """Restore a suspended user."""
     user_target = get_object_or_404(User, pk=pk)
     if request.method == 'POST':
         user_target.is_active = True
@@ -705,7 +770,6 @@ def user_unsuspend(request, pk):
 
 @login_required(login_url='/panel/login/')
 def user_clear_warning(request, pk):
-    """Clear warning note from a user."""
     user_target = get_object_or_404(User, pk=pk)
     if request.method == 'POST':
         user_target.warning_note = ''
@@ -719,7 +783,6 @@ def user_clear_warning(request, pk):
 from functools import wraps
 
 def admin_required(view_func):
-    """Allow only authenticated super_admin or mgmt_admin users."""
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
         if not request.user.is_authenticated:

@@ -1,54 +1,182 @@
 {% extends "panel/base.html" %}
 {% block title %}Check-In List — ETD 2026{% endblock %}
 {% block page_title %}Check-In List{% endblock %}
-{% block page_subtitle %}All conference check-ins{% endblock %}
+{% block page_subtitle %}Conference check-in and meal pass status{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Checked-In Attendees <span style="font-size:16px;font-weight:500;color:var(--text-tertiary);">({{ checkins|length }})</span></h1>
+<!-- Stats -->
+<div class="stats-grid" style="margin-bottom:24px;">
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--success);">{{ checked_in_count }}</div>
+    <div class="stat-label">Checked In</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--warning);">{{ not_checked_in_count }}</div>
+    <div class="stat-label">Not Checked In</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--primary);">{{ meal_used_count }}</div>
+    <div class="stat-label">Meal Passes Used</div>
+  </div>
+</div>
+
+<!-- Actions -->
+<div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
   <a href="/panel/checkins/scanner/" class="btn btn-primary">
     <i class="fas fa-qrcode"></i> Open Scanner
   </a>
+  <form method="get" style="margin-left:auto;display:flex;gap:8px;">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="text" name="search" value="{{ search }}"
+           placeholder="Search name, email, reg ID…"
+           class="form-control" style="width:260px;">
+    <button type="submit" class="btn btn-secondary"><i class="fas fa-search"></i></button>
+    {% if search %}<a href="?tab={{ tab }}" class="btn btn-sm" style="align-self:center;">Clear</a>{% endif %}
+  </form>
 </div>
 
+<!-- Tabs -->
+<div style="display:flex;gap:4px;margin-bottom:20px;border-bottom:2px solid var(--border);">
+  {% for t_key, t_label in tabs %}
+  <a href="?tab={{ t_key }}{% if search %}&search={{ search }}{% endif %}"
+     style="padding:10px 20px;font-size:14px;font-weight:600;text-decoration:none;
+            border-bottom:3px solid {% if tab == t_key %}var(--primary){% else %}transparent{% endif %};
+            color:{% if tab == t_key %}var(--primary){% else %}var(--text-secondary){% endif %};
+            margin-bottom:-2px;">
+    {{ t_label }}
+  </a>
+  {% endfor %}
+</div>
+
+{% if tab == 'checked_in' %}
 <div class="card">
   <div class="card-body" style="padding:0;">
     {% if checkins %}
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Attendee</th>
-          <th>Registration ID</th>
-          <th>Role</th>
-          <th>Affiliation</th>
-          <th>Scanned By</th>
-          <th>Time</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in checkins %}
-        <tr>
-          <td>
-            <div style="font-weight:600;">{{ c.user.get_full_name }}</div>
-            <div style="font-size:12px;color:var(--text-tertiary);">{{ c.user.email }}</div>
-          </td>
-          <td><code>{{ c.user.registration_id|default:"—" }}</code></td>
-          <td><span class="badge badge-info">{{ c.user.role|upper }}</span></td>
-          <td>{{ c.user.affiliation|default:"—" }}</td>
-          <td>{{ c.scanned_by.get_full_name|default:"System" }}</td>
-          <td style="font-size:13px;color:var(--text-secondary);">{{ c.scanned_at|date:"d M Y, H:i" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Attendee</th>
+            <th>Registration ID</th>
+            <th>Affiliation</th>
+            <th>Conference Kit</th>
+            <th>Scanned By</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in checkins %}
+          <tr>
+            <td>
+              <div style="font-weight:600;">{{ c.user.get_full_name }}</div>
+              <div style="font-size:12px;color:var(--text-tertiary);">{{ c.user.email }}</div>
+            </td>
+            <td><code>{{ c.user.registration_id|default:"—" }}</code></td>
+            <td>{{ c.user.affiliation|default:"—" }}</td>
+            <td>
+              {% if c.goodies_status == 'received' %}
+                <span class="badge badge-success">Received</span>
+              {% elif c.goodies_status == 'skipped' %}
+                <span class="badge badge-warning">Skipped</span>
+              {% else %}
+                <span class="badge" style="background:var(--bg);color:var(--text-secondary);">Pending</span>
+              {% endif %}
+            </td>
+            <td>{{ c.scanned_by.get_full_name|default:"System" }}</td>
+            <td style="font-size:13px;color:var(--text-secondary);">{{ c.scanned_at|date:"d M Y, H:i" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
     <div class="empty-state">
       <i class="fas fa-qrcode"></i>
-      <h3>No check-ins yet</h3>
-      <p>Start scanning to mark attendees present.</p>
-      <a href="/panel/checkins/scanner/" class="btn btn-primary">Open Scanner</a>
+      <h3>No check-ins{% if search %} matching "{{ search }}"{% endif %}</h3>
+      <p>{% if search %}Try a different search.{% else %}Start scanning to mark attendees present.{% endif %}</p>
+      {% if not search %}<a href="/panel/checkins/scanner/" class="btn btn-primary">Open Scanner</a>{% endif %}
     </div>
     {% endif %}
   </div>
 </div>
+
+{% elif tab == 'not_checked_in' %}
+<div class="card">
+  <div class="card-body" style="padding:0;">
+    {% if not_checked_in %}
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th><th>Email</th><th>Registration ID</th><th>Affiliation</th><th>Phone</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in not_checked_in %}
+          <tr>
+            <td style="font-weight:600;">{{ u.get_full_name }}</td>
+            <td>{{ u.email }}</td>
+            <td><code>{{ u.registration_id|default:"—" }}</code></td>
+            <td>{{ u.affiliation|default:"—" }}</td>
+            <td>{{ u.phone|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-circle-check"></i>
+      <h3>Everyone is checked in{% if search %} (or no match){% endif %}!</h3>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% elif tab == 'meal' %}
+<div class="card">
+  <div class="card-body" style="padding:0;">
+    {% if meal_passes %}
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Attendee</th><th>Registration ID</th><th>Generated At</th><th>Status</th><th>Used At</th><th>Scanned By</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in meal_passes %}
+          <tr>
+            <td>
+              <div style="font-weight:600;">{{ p.user.get_full_name }}</div>
+              <div style="font-size:12px;color:var(--text-tertiary);">{{ p.user.email }}</div>
+            </td>
+            <td><code>{{ p.user.registration_id|default:"—" }}</code></td>
+            <td style="font-size:13px;color:var(--text-secondary);">{{ p.created_at|date:"d M Y, H:i" }}</td>
+            <td>
+              {% if p.used %}
+                <span class="badge badge-success">Used</span>
+              {% else %}
+                <span class="badge" style="background:var(--bg);color:var(--text-secondary);">Pending</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px;color:var(--text-secondary);">
+              {% if p.used_at %}{{ p.used_at|date:"H:i" }}{% else %}—{% endif %}
+            </td>
+            <td>{{ p.scanned_by.get_full_name|default:"—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-utensils"></i>
+      <h3>No meal passes{% if search %} matching "{{ search }}"{% endif %} today</h3>
+      <p>Meal passes appear here once attendees generate them.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 {% endblock %}

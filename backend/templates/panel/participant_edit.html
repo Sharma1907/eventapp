@@ -1,119 +1,68 @@
 {% extends "panel/base.html" %}
 {% block title %}Edit Participant — ETD 2026{% endblock %}
 {% block page_title %}Edit Participant{% endblock %}
-{% block page_subtitle %}{{ participant.get_full_name }} — {{ participant.email }}{% endblock %}
+{% block page_subtitle %}{{ participant.get_full_name }}{% endblock %}
 
 {% block content %}
 {% if messages %}
   {% for m in messages %}
-    <div class="alert {% if 'error' in m.tags %}alert-error{% else %}alert-success{% endif %}">
-      <i class="fas {% if 'error' in m.tags %}fa-circle-xmark{% else %}fa-circle-check{% endif %}"></i>
+    <div class="alert {% if 'error' in m.tags %}alert-error{% elif 'warning' in m.tags %}alert-warning{% else %}alert-success{% endif %}">
+      <i class="fas {% if 'error' in m.tags %}fa-circle-xmark{% elif 'warning' in m.tags %}fa-triangle-exclamation{% else %}fa-circle-check{% endif %}"></i>
       {{ m }}
     </div>
   {% endfor %}
 {% endif %}
 
-<div style="max-width:600px;">
-  <div class="card">
-    <div class="card-header">
-      <h3>Participant Details</h3>
-      <a href="{% url 'participants_list' %}" class="card-header-action">
-        <i class="fas fa-arrow-left"></i> Back to List
-      </a>
-    </div>
-    <div class="card-body">
-      <form method="post">
-        {% csrf_token %}
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
-          <div>
-            <label class="form-label">First Name</label>
-            <input type="text" name="first_name" value="{{ participant.first_name }}" class="form-control" required>
-          </div>
-          <div>
-            <label class="form-label">Last Name</label>
-            <input type="text" name="last_name" value="{{ participant.last_name }}" class="form-control">
-          </div>
-        </div>
-
-        <div style="margin-bottom:16px;">
-          <label class="form-label">Email</label>
-          <input type="email" name="email" value="{{ participant.email }}" class="form-control" required>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
-          <div>
-            <label class="form-label">Phone</label>
-            <input type="text" name="phone" value="{{ participant.phone }}" class="form-control">
-          </div>
-          <div>
-            <label class="form-label">Affiliation / Organisation</label>
-            <input type="text" name="affiliation" value="{{ participant.affiliation }}" class="form-control">
-          </div>
-        </div>
-
-        <!-- Read-only info -->
-        <div style="background:var(--bg);border-radius:10px;padding:16px;margin-bottom:24px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
-            <div>
-              <span style="color:var(--text-tertiary);">Role</span><br>
-              <strong>{{ participant.get_role_display }}</strong>
-            </div>
-            <div>
-              <span style="color:var(--text-tertiary);">Password Status</span><br>
-              {% if participant.must_change_password %}
-                <span class="badge badge-warning">Temp (not changed)</span>
-              {% else %}
-                <span class="badge badge-success">Set by user</span>
-              {% endif %}
-            </div>
-            <div>
-              <span style="color:var(--text-tertiary);">Joined</span><br>
-              <strong>{{ participant.created_at|date:"d M Y, H:i" }}</strong>
-            </div>
-            <div>
-              <span style="color:var(--text-tertiary);">Profile Complete</span><br>
-              {% if participant.profile_complete %}
-                <span class="badge badge-success">Yes</span>
-              {% else %}
-                <span class="badge badge-warning">No</span>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:12px;">
-          <button type="submit" class="btn btn-primary">
-            <i class="fas fa-save"></i> Save Changes
-          </button>
-          <a href="{% url 'participants_list' %}" class="btn btn-secondary">Cancel</a>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Danger Zone -->
-  <div class="card" style="margin-top:24px;border-color:var(--danger);">
-    <div class="card-header" style="background:var(--danger-light);">
-      <h3 style="color:var(--danger);font-size:14px;">
-        <i class="fas fa-exclamation-triangle"></i> Danger Zone
-      </h3>
-    </div>
-    <div class="card-body">
-      <div style="display:flex;align-items:center;justify-content:space-between;">
+<div class="card" style="max-width:640px;">
+  <div class="card-header"><h3>Edit Details</h3></div>
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <div>
-          <h4 style="font-size:14px;">Delete this participant</h4>
-          <p style="font-size:13px;color:var(--text-tertiary);">This action cannot be undone. All data will be permanently removed.</p>
+          <label class="form-label">First Name</label>
+          <input type="text" name="first_name" value="{{ participant.first_name }}" class="form-control">
         </div>
-        <form method="post" action="{% url 'participant_delete' participant.pk %}">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-danger btn-sm"
-                  onclick="return confirm('Permanently delete {{ participant.get_full_name }}? This cannot be undone.')">
-            <i class="fas fa-trash-can"></i> Delete
-          </button>
-        </form>
+        <div>
+          <label class="form-label">Last Name</label>
+          <input type="text" name="last_name" value="{{ participant.last_name }}" class="form-control">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" value="{{ participant.email }}" class="form-control">
+        </div>
+        <div>
+          <label class="form-label">Registration ID</label>
+          <input type="text" name="registration_id" value="{{ participant.registration_id|default:'' }}" class="form-control">
+        </div>
+        <div>
+          <label class="form-label">Phone</label>
+          <input type="text" name="phone" value="{{ participant.phone }}" class="form-control">
+        </div>
+        <div>
+          <label class="form-label">Gender</label>
+          <select name="gender" class="form-control">
+            <option value="">—</option>
+            <option value="Male" {% if participant.gender == 'Male' %}selected{% endif %}>Male</option>
+            <option value="Female" {% if participant.gender == 'Female' %}selected{% endif %}>Female</option>
+            <option value="Other" {% if participant.gender == 'Other' %}selected{% endif %}>Other</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Designation</label>
+          <input type="text" name="designation" value="{{ participant.designation }}" class="form-control">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label class="form-label">Affiliation</label>
+          <input type="text" name="affiliation" value="{{ participant.affiliation }}" class="form-control">
+        </div>
       </div>
-    </div>
+
+      <div style="display:flex;gap:12px;margin-top:24px;">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Changes</button>
+        <a href="{% url 'participants_list' %}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
   </div>
 </div>
 {% endblock %}

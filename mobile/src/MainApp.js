@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Animated, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, FONT, SPACE, RADIUS, SHADOW, API_URL, API_HEADERS, fixMediaUrl } from './theme';
+import { COLORS, FONT, SPACE, RADIUS, API_URL, API_HEADERS } from './theme';
+import { apiFetch, setTokens as setApiTokens } from './api';
 import HomeTab from './screens/HomeTab';
 import ScheduleTab from './screens/ScheduleTab';
 import QRScreen from './screens/QRScreen';
@@ -17,11 +17,12 @@ import SpokersScreen from './screens/SpokersScreen';
 import ChatListScreen from './screens/ChatListScreen';
 import ChatRoomScreen from './screens/ChatRoomScreen';
 import ConnectionRequestsScreen from './screens/ConnectionRequestsScreen';
+import LeaderboardScreen from './screens/LeaderboardScreen';
+import PhotosScreen from './screens/PhotosScreen';
 
 const BASE_TABS = [
   { key: 'home',     iconOn: 'home',     iconOff: 'home-outline',     label: 'Home' },
   { key: 'schedule', iconOn: 'calendar', iconOff: 'calendar-outline', label: 'Schedule' },
-  { key: 'qr',       iconOn: 'qr-code',  iconOff: 'qr-code-outline',  label: 'My QR' },
   { key: 'network',  iconOn: 'people',   iconOff: 'people-outline',   label: 'Network' },
   { key: 'profile',  iconOn: 'person',   iconOff: 'person-outline',   label: 'Profile' },
 ];
@@ -30,7 +31,7 @@ const ADMIN_TAB = { key: 'admin', iconOn: 'shield-checkmark', iconOff: 'shield-c
 function getTabs(role) {
   const isAdmin = role === 'super_admin' || role === 'mgmt_admin';
   if (!isAdmin) return BASE_TABS;
-  return BASE_TABS.slice(0, 4).concat(ADMIN_TAB);
+  return BASE_TABS.slice(0, 3).concat(ADMIN_TAB);
 }
 
 function BottomTabBar({ active, onTab, tabs, networkBadge }) {
@@ -51,23 +52,15 @@ function BottomTabBar({ active, onTab, tabs, networkBadge }) {
         return (
           <TouchableOpacity key={t.key} style={st.tabItem} onPress={() => press(t.key, i)} activeOpacity={1}>
             <Animated.View style={{ alignItems: 'center', transform: [{ scale: scales[i] }] }}>
-              {t.key === 'qr' ? (
-                <LinearGradient colors={[COLORS.accent, COLORS.accentDark]} style={st.qrBtn}>
-                  <Ionicons name="qr-code" size={24} color={COLORS.textInverse} />
-                </LinearGradient>
-              ) : (
-                <>
-                  <View style={[st.iconWrap, on && st.iconWrapOn]}>
-                    <Ionicons name={on ? t.iconOn : t.iconOff} size={20} color={on ? COLORS.brand : COLORS.textTer} />
-                    {t.key === 'network' && networkBadge > 0 && (
-                      <View style={st.tabBadge}>
-                        <Text style={st.tabBadgeText}>{networkBadge > 9 ? '9+' : networkBadge}</Text>
-                      </View>
-                    )}
+              <View style={[st.iconWrap, on && st.iconWrapOn]}>
+                <Ionicons name={on ? t.iconOn : t.iconOff} size={20} color={on ? COLORS.brand : COLORS.textTer} />
+                {t.key === 'network' && networkBadge > 0 && (
+                  <View style={st.tabBadge}>
+                    <Text style={st.tabBadgeText}>{networkBadge > 9 ? '9+' : networkBadge}</Text>
                   </View>
-                  <Text style={[st.tabLabel, on && st.tabLabelOn]}>{t.label}</Text>
-                </>
-              )}
+                )}
+              </View>
+              <Text style={[st.tabLabel, on && st.tabLabelOn]}>{t.label}</Text>
             </Animated.View>
           </TouchableOpacity>
         );
@@ -89,12 +82,18 @@ export default function MainApp({
   const [subScreen, setSubScreen] = useState(null);
   const [subParams, setSubParams] = useState({});
   const [user, setUser] = useState(initialUser);
+  const tokensRef = useRef(tokens);
+  useEffect(() => { tokensRef.current = tokens; }, [tokens]);
   const [warningVisible, setWarningVisible] = useState(false);
   const [warningText, setWarningText] = useState('');
   const [pendingRequests, setPendingRequests] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
 
   const tabs = getTabs(user.role);
+
+  useEffect(() => {
+    if (tokens) setApiTokens(tokens);
+  }, [tokens]);
 
   useEffect(() => {
     if (refreshUser) refreshUser(tokens);
@@ -108,24 +107,29 @@ export default function MainApp({
   }, [user.warning_note]);
 
   const fetchBadges = useCallback(async () => {
-    if (!tokens?.access) return;
-    const auth = { ...API_HEADERS, Authorization: `Bearer ${tokens.access}` };
+    const t = tokensRef.current;
+    if (!t?.access) return;
     try {
+      const auth = { ...API_HEADERS, Authorization: `Bearer ${t.access}` };
       const [reqRes, convRes] = await Promise.all([
         fetch(`${API_URL}/chat/requests/count/`, { headers: auth }),
-        fetch(`${API_URL}/chat/conversations/`,  { headers: auth }),
+        fetch(`${API_URL}/chat/conversations/`, { headers: auth }),
       ]);
+      if (reqRes.status === 401 || convRes.status === 401) {
+        const refreshed = await apiFetch('/auth/me/');
+        return;
+      }
       const reqData = await reqRes.json();
       const convData = await convRes.json();
       setPendingRequests(reqData.pending_count || 0);
       setChatUnread(convData.total_unread || 0);
     } catch { /* silent */ }
-  }, [tokens]);
+  }, []);
 
   useEffect(() => {
-    fetchBadges();
+    const d = setTimeout(fetchBadges, 500);
     const t = setInterval(fetchBadges, 30000);
-    return () => clearInterval(t);
+    return () => { clearTimeout(d); clearInterval(t); };
   }, [fetchBadges]);
 
   const handleProfileUpdated = (updatedUser) => {
@@ -221,6 +225,12 @@ export default function MainApp({
       />
     );
   }
+  if (subScreen === 'leaderboard') {
+    return <LeaderboardScreen onBack={() => setSubScreen(null)} />;
+  }
+  if (subScreen === 'photos') {
+    return <PhotosScreen onBack={() => setSubScreen(null)} />;
+  }
 
   const SCREENS = {
     home: (
@@ -231,10 +241,14 @@ export default function MainApp({
         onOpenSponsors={() => openSubScreen('sponsors')}
         onOpenSpeakers={() => openSubScreen('speakers')}
         onOpenChats={() => openSubScreen('chat_list')}
+        onOpenQR={() => setTab('qr')}
+        onOpenSchedule={() => setTab('schedule')}
+        onOpenLeaderboard={() => openSubScreen('leaderboard')}
+        onOpenPhotos={() => openSubScreen('photos')}
         chatBadge={pendingRequests + chatUnread}
       />
     ),
-    schedule: <ScheduleTab />,
+    schedule: <ScheduleTab tokens={tokens} />,
     qr: <QRScreen user={user} tokens={tokens} />,
     network: (
       <NetworkScreen
@@ -256,7 +270,7 @@ export default function MainApp({
         onOpenChats={() => openSubScreen('chat_list')}
       />
     ),
-    admin: <AdminTab user={user} tokens={tokens} />,
+    admin: <AdminTab user={user} tokens={tokens} onLogout={onLogout} />,
   };
 
   return (
@@ -302,7 +316,6 @@ const st = StyleSheet.create({
   iconWrapOn: { backgroundColor: COLORS.brandLight },
   tabLabel: { fontSize: 10, fontWeight: FONT.w5, color: COLORS.textTer, marginTop: 3 },
   tabLabelOn: { color: COLORS.brand, fontWeight: FONT.w7 },
-  qrBtn: { width: 52, height: 52, borderRadius: RADIUS.xl, alignItems: 'center', justifyContent: 'center', marginTop: -22, ...SHADOW.accent },
   tabBadge: {
     position: 'absolute', top: -4, right: -4,
     minWidth: 16, height: 16, borderRadius: 8,

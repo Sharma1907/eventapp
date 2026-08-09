@@ -1,3 +1,74 @@
 from django.db import models
+from django.conf import settings
+from apps.schedule.models import ScheduleSession
 
-# Create your models here.
+
+class PhotoSettings(models.Model):
+    """
+    Singleton — pk=1.
+    Controls the global upload window + auto-approve toggle.
+    """
+    upload_open   = models.BooleanField(default=False)
+    auto_approve  = models.BooleanField(default=False)
+    updated_at    = models.DateTimeField(auto_now=True)
+    updated_by    = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
+
+    class Meta:
+        db_table = 'photo_settings'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class Photo(models.Model):
+    class Status(models.TextChoices):
+        PENDING  = 'pending',  'Pending'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+
+    uploader    = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='photos',
+    )
+    image       = models.ImageField(upload_to='photos/%Y/%m/')
+    caption     = models.CharField(max_length=300, blank=True)
+    session     = models.ForeignKey(
+        ScheduleSession,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='photos',
+    )
+    status      = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    rejected_reason = models.CharField(max_length=200, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='reviewed_photos',
+    )
+
+    class Meta:
+        db_table = 'photos'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.uploader.email} — {self.status}"

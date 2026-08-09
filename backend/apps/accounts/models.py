@@ -93,23 +93,22 @@ class UserFCMToken(models.Model):
 class ParticipantImport(models.Model):
     class Status(models.TextChoices):
         PENDING  = 'pending',  'Pending'
-        IMPORTED = 'imported', 'Imported'   # user record created
-        FAILED   = 'failed',   'Failed'     # error during user creation
+        IMPORTED = 'imported', 'Imported'
+        FAILED   = 'failed',   'Failed'
 
-    # Raw CSV fields (all optional at model level; validation at parse time)
-    salutation   = models.CharField(max_length=20, blank=True)
-    full_name    = models.CharField(max_length=200)
-    email        = models.EmailField()
-    gender       = models.CharField(max_length=20, blank=True)
-    designation  = models.CharField(max_length=200, blank=True)
-    organisation = models.CharField(max_length=200, blank=True)
-    mobile       = models.CharField(max_length=30, blank=True)
-    address      = models.TextField(blank=True)
-    pin_code     = models.CharField(max_length=20, blank=True)
+    salutation      = models.CharField(max_length=20, blank=True)
+    full_name       = models.CharField(max_length=200)
+    email           = models.EmailField()
+    registration_id = models.CharField(max_length=50, blank=True)
+    gender          = models.CharField(max_length=20, blank=True)
+    designation     = models.CharField(max_length=200, blank=True)
+    organisation    = models.CharField(max_length=200, blank=True)
+    mobile          = models.CharField(max_length=30, blank=True)
+    address         = models.TextField(blank=True)
+    pin_code        = models.CharField(max_length=20, blank=True)
 
-    # Housekeeping
     status       = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
-    error_note   = models.CharField(max_length=500, blank=True)   # why it failed
+    error_note   = models.CharField(max_length=500, blank=True)
     uploaded_at  = models.DateTimeField(auto_now_add=True)
     uploaded_by  = models.ForeignKey(
         'accounts.User', on_delete=models.SET_NULL,

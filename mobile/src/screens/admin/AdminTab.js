@@ -1,52 +1,109 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, Platform, Image,
+  StyleSheet, Platform, Alert, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONT, SPACE, RADIUS } from '../../theme';
-import { FadeIn, IconBox, Divider } from '../../components';
-import NotificationsAdmin from './NotificationsAdmin';
-import UsersAdmin from './UsersAdmin';
+import { FadeIn } from '../../components';
+import NotificationsAdmin   from './NotificationsAdmin';
+import UsersAdmin           from './UsersAdmin';
+import AddParticipantScreen from './AddParticipantScreen';
+import CheckInScreen        from './CheckInScreen';
+import ScheduleAdmin        from './ScheduleAdmin';
+import LeaderboardAdmin     from '../LeaderboardScreen';
 
-const ADMIN_FEATURES = [
+const CARD_SIZE = (Dimensions.get('window').width - SPACE.xl * 2 - SPACE.md) / 2;
+
+const FEATURES = [
   {
-    key:   'notifications',
-    icon:  'megaphone',
-    label: 'Push Notifications',
-    sub:   'Send, edit & delete notifications',
-    color: COLORS.brand,
-    bg:    COLORS.brandLight,
+    key:  'checkin',
+    icon: 'qr-code',
+    label:'Scan',
+    sub:  'Check-in & Meal Passes',
+    grad: ['#059669', '#047857'],
   },
   {
-    key:   'users',
-    icon:  'people',
-    label: 'User Management',
-    sub:   'Warn or suspend accounts',
-    color: COLORS.purple,
-    bg:    COLORS.purpleLight,
+    key:  'notifications',
+    icon: 'megaphone',
+    label:'Notifications',
+    sub:  'Send push messages',
+    grad: [COLORS.brand, COLORS.brandDark],
   },
-  // ── future admin features go here ──────────────────────────────────────
-  // ceiling: event management, scanner stats, reports/export
+  {
+    key:  'add_participant',
+    icon: 'person-add',
+    label:'Add Member',
+    sub:  'Create participant account',
+    grad: ['#0d9488', '#0f766e'],
+  },
+  {
+    key:  'users',
+    icon: 'shield',
+    label:'User Mgmt',
+    sub:  'Warn or suspend accounts',
+    grad: [COLORS.purple, '#7c3aed'],
+  },
+  {
+    key:  'schedule',
+    icon: 'calendar',
+    label:'Sessions',
+    sub:  'Manage schedule & feedback',
+    grad: ['#0284c7', '#0369a1'],
+  },
+  {
+    key:  'leaderboard',
+    icon: 'trophy',
+    label:'Leaderboard',
+    sub:  'View rankings & points',
+    grad: ['#d97706', '#b45309'],
+  },
 ];
 
-export default function AdminTab({ user, tokens }) {
+function FeatureCube({ feat, onPress }) {
+  return (
+    <TouchableOpacity
+      style={[g.cube, { width: CARD_SIZE, height: CARD_SIZE }]}
+      onPress={onPress}
+      activeOpacity={0.82}
+    >
+      <LinearGradient colors={feat.grad} style={g.grad}>
+        <View style={g.iconWrap}>
+          <Ionicons name={feat.icon} size={28} color="#fff" />
+        </View>
+        <View>
+          <Text style={g.label} numberOfLines={1}>{feat.label}</Text>
+          <Text style={g.sub}   numberOfLines={2}>{feat.sub}</Text>
+        </View>
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+}
+
+export default function AdminTab({ user, tokens, onLogout }) {
   const [screen, setScreen] = useState(null);
 
-  if (screen === 'notifications') {
-    return <NotificationsAdmin tokens={tokens} onBack={() => setScreen(null)} />;
-  }
-  if (screen === 'users') {
-    return <UsersAdmin tokens={tokens} onBack={() => setScreen(null)} />;
-  }
+  const handleLogout = () =>
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: onLogout },
+    ]);
 
-  return (
+  if (screen === 'checkin')         return <CheckInScreen        tokens={tokens} onBack={() => setScreen(null)} />;
+  if (screen === 'notifications')   return <NotificationsAdmin   tokens={tokens} onBack={() => setScreen(null)} />;
+  if (screen === 'add_participant') return <AddParticipantScreen tokens={tokens} onBack={() => setScreen(null)} onCreated={() => setScreen(null)} />;
+  if (screen === 'users')           return <UsersAdmin           tokens={tokens} onBack={() => setScreen(null)} />;
+  if (screen === 'schedule')        return <ScheduleAdmin        tokens={tokens} onBack={() => setScreen(null)} />;
+
+  
+  if (screen === 'leaderboard') {
+    return <LeaderboardAdmin onBack={() => setScreen(null)} />;
+  }return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      {/* hero */}
-      <LinearGradient colors={[COLORS.brand, COLORS.brandDark]} style={a.hero}>
+      <LinearGradient colors={[COLORS.brandDeep, COLORS.brand]} style={a.hero}>
         <View style={a.blob} />
-        <View style={a.shieldWrap}>
+        <View style={a.iconWrap}>
           <Ionicons name="shield-checkmark" size={36} color="#fff" />
         </View>
         <Text style={a.heroTitle}>Admin Panel</Text>
@@ -61,94 +118,53 @@ export default function AdminTab({ user, tokens }) {
         showsVerticalScrollIndicator={false}
       >
         <FadeIn delay={60}>
-          <Text style={a.secLabel}>MANAGE</Text>
-          <View style={a.card}>
-            {ADMIN_FEATURES.map((feat, i) => (
-              <React.Fragment key={feat.key}>
-                <TouchableOpacity
-                  style={a.row}
-                  activeOpacity={0.7}
-                  onPress={() => setScreen(feat.key)}
-                >
-                  <IconBox
-                    name={feat.icon}
-                    size={18}
-                    color={feat.color}
-                    bg={feat.bg}
-                    boxSize={42}
-                    radius={RADIUS.md}
-                    style={{ marginRight: SPACE.md }}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={a.rowLabel}>{feat.label}</Text>
-                    <Text style={a.rowSub}>{feat.sub}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.border} />
-                </TouchableOpacity>
-                {i < ADMIN_FEATURES.length - 1 && (
-                  <Divider style={{ marginLeft: SPACE.md + 42 + SPACE.md }} />
-                )}
-              </React.Fragment>
+          <Text style={a.secLabel}>TOOLS</Text>
+          <View style={g.grid}>
+            {FEATURES.map(f => (
+              <FeatureCube key={f.key} feat={f} onPress={() => setScreen(f.key)} />
             ))}
           </View>
         </FadeIn>
 
-        <FadeIn delay={120}>
-          <Text style={a.secLabel}>QUICK LINKS</Text>
-          <View style={a.card}>
-            <Text style={a.hint}>
-              <Ionicons name="globe-outline" size={13} color={COLORS.textTer} />
-              {'  '}Full web dashboard available at your server's /panel/ URL
-            </Text>
+        <FadeIn delay={140}>
+          <Text style={a.secLabel}>SYSTEM</Text>
+          <View style={a.infoCard}>
+            <Ionicons name="globe-outline" size={15} color={COLORS.textTer} />
+            <Text style={a.infoTxt}>Full web dashboard at your server's /panel/ URL</Text>
           </View>
+        </FadeIn>
+
+        <FadeIn delay={200}>
+          <TouchableOpacity style={a.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+            <Ionicons name="log-out-outline" size={18} color={COLORS.error} />
+            <Text style={a.logoutTxt}>Sign Out</Text>
+          </TouchableOpacity>
         </FadeIn>
       </ScrollView>
     </View>
   );
 }
 
-const a = StyleSheet.create({
-  hero: {
-    paddingTop: Platform.OS === 'ios' ? 58 : 46,
-    paddingBottom: SPACE.xxl,
-    paddingHorizontal: SPACE.xl,
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  blob: {
-    position: 'absolute', width: 200, height: 200, borderRadius: 100,
-    backgroundColor: 'rgba(255,255,255,0.06)', top: -70, right: -50,
-  },
-  shieldWrap: {
-    width: 72, height: 72, borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: SPACE.md,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
-  },
-  heroTitle: { fontSize: FONT.xl, fontWeight: FONT.w9, color: '#fff', letterSpacing: -0.3 },
-  heroSub:   { fontSize: FONT.sm, color: 'rgba(255,255,255,0.65)', marginTop: 4 },
-  rolePill: {
-    marginTop: SPACE.md,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
-    paddingHorizontal: SPACE.md, paddingVertical: 5,
-    borderRadius: RADIUS.full,
-  },
-  roleTxt: { fontSize: 10, fontWeight: FONT.w8, color: '#fff', letterSpacing: 0.8 },
+const g = StyleSheet.create({
+  grid:    { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginBottom: SPACE.xl },
+  cube:    { borderRadius: RADIUS.xl, overflow: 'hidden' },
+  grad:    { flex: 1, padding: SPACE.lg, justifyContent: 'space-between' },
+  iconWrap:{ width: 50, height: 50, borderRadius: RADIUS.md, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: SPACE.sm },
+  label:   { fontSize: FONT.md, fontWeight: FONT.w8, color: '#fff' },
+  sub:     { fontSize: FONT.xs, color: 'rgba(255,255,255,0.72)', marginTop: 3, lineHeight: 16 },
+});
 
-  secLabel: {
-    fontSize: 10, fontWeight: FONT.w8, color: COLORS.textTer,
-    letterSpacing: 1.5, marginBottom: SPACE.sm, marginLeft: 4,
-  },
-  card: {
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderRadius: RADIUS.xl, padding: SPACE.lg,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
-    marginBottom: SPACE.xl,
-  },
-  row:      { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.md },
-  rowLabel: { fontSize: FONT.sm, fontWeight: FONT.w6, color: COLORS.text },
-  rowSub:   { fontSize: FONT.xs, color: COLORS.textTer, marginTop: 2 },
-  hint:     { fontSize: FONT.xs, color: COLORS.textTer, lineHeight: 20 },
+const a = StyleSheet.create({
+  hero:     { paddingTop: Platform.OS === 'ios' ? 58 : 46, paddingBottom: SPACE.xxl, paddingHorizontal: SPACE.xl, alignItems: 'center', overflow: 'hidden' },
+  blob:     { position: 'absolute', width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.05)', top: -80, right: -60 },
+  iconWrap: { width: 72, height: 72, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: SPACE.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  heroTitle:{ fontSize: FONT.xl, fontWeight: FONT.w9, color: '#fff', letterSpacing: -0.3 },
+  heroSub:  { fontSize: FONT.sm, color: 'rgba(255,255,255,0.65)', marginTop: 4 },
+  rolePill: { marginTop: SPACE.md, backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', paddingHorizontal: SPACE.md, paddingVertical: 5, borderRadius: RADIUS.full },
+  roleTxt:  { fontSize: 10, fontWeight: FONT.w8, color: '#fff', letterSpacing: 0.8 },
+  secLabel: { fontSize: 10, fontWeight: FONT.w8, color: COLORS.textTer, letterSpacing: 1.5, marginBottom: SPACE.sm, marginLeft: 4 },
+  infoCard: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACE.md, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACE.xl },
+  infoTxt:  { flex: 1, fontSize: FONT.xs, color: COLORS.textTer, lineHeight: 18 },
+  logoutBtn:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingVertical: SPACE.md, borderRadius: RADIUS.lg, borderWidth: 1.5, borderColor: COLORS.error, backgroundColor: COLORS.errorLight },
+  logoutTxt:{ fontSize: FONT.sm, fontWeight: FONT.w7, color: COLORS.error },
 });

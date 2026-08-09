@@ -1,0 +1,290 @@
+{% extends 'panel/base.html' %}
+{% block title %}{{ mode|title }} Session — ETD 2026 Admin{% endblock %}
+{% block page_title %}{% if mode == 'edit' %}Edit Session{% else %}New Session{% endif %}{% endblock %}
+{% block page_subtitle %}{% if session %}{{ session.title }}{% else %}Create a new schedule session{% endif %}{% endblock %}
+
+{% block content %}
+{% if messages %}{% for m in messages %}
+<div class="alert alert-{% if m.tags == 'error' %}error{% else %}success{% endif %}">
+    <i class="fas fa-circle-check"></i> {{ m }}
+</div>{% endfor %}{% endif %}
+
+<form method="post" id="sessionForm">
+{% csrf_token %}
+
+<div style="display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start;">
+
+<!-- Left column -->
+<div>
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><h3>Session Details</h3></div>
+    <div class="card-body" style="display:grid;gap:16px;">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+                <label class="form-label">Conference Day *</label>
+                <select class="form-control" name="day" required>
+                    {% for val,label in days %}
+                    <option value="{{ val }}" {% if session and session.day == val %}selected{% elif not session and val == 1 %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label">Session Type *</label>
+                <select class="form-control" name="session_type" required>
+                    {% for val,label in session_types %}
+                    <option value="{{ val }}" {% if session and session.session_type == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div>
+            <label class="form-label">Title *</label>
+            <input class="form-control" name="title" required maxlength="300"
+                   value="{{ session.title|default:'' }}" placeholder="e.g. Technical Session – 1">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+                <label class="form-label">Start Date & Time *</label>
+                <input type="datetime-local" class="form-control" name="start_datetime" required
+                       value="{{ session.start_datetime|date:'Y-m-d\TH:i'|default:'' }}">
+            </div>
+            <div>
+                <label class="form-label">End Date & Time *</label>
+                <input type="datetime-local" class="form-control" name="end_datetime" required
+                       value="{{ session.end_datetime|date:'Y-m-d\TH:i'|default:'' }}">
+            </div>
+        </div>
+
+        <div>
+            <label class="form-label">Room / Venue</label>
+            <input class="form-control" name="room" maxlength="200"
+                   value="{{ session.room|default:'' }}" placeholder="e.g. Main Auditorium">
+        </div>
+
+        <div>
+            <label class="form-label">Description / Abstract</label>
+            <textarea class="form-control" name="description" rows="4"
+                      placeholder="Optional description shown to participants">{{ session.description|default:'' }}</textarea>
+        </div>
+
+        <div>
+            <label class="form-label">Display Order</label>
+            <input type="number" class="form-control" name="display_order" min="0"
+                   value="{{ session.display_order|default:0 }}">
+            <small style="color:var(--text-tertiary);font-size:11px;">Lower = shown first within the day.</small>
+        </div>
+    </div>
+</div>
+
+<!-- Sub-sessions -->
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <h3>Sub-Sessions
+            {% if mode == 'edit' %}
+            <span style="color:var(--text-tertiary);font-size:13px;font-weight:500;">({{ sub_sessions|length|default:"0" }})</span>
+            {% endif %}
+        </h3>
+        {% if mode == 'edit' %}
+        <button type="button" class="btn btn-primary btn-sm" onclick="showAddSub()">
+            <i class="fas fa-plus"></i> Add
+        </button>
+        {% endif %}
+    </div>
+    <div class="card-body" style="padding:0;" id="subList">
+        {% if mode == 'create' %}
+        <div style="padding:24px;text-align:center;color:var(--text-tertiary);font-size:13px;">
+            <i class="fas fa-info-circle" style="margin-right:6px;color:var(--primary);"></i>
+            Save the session first, then you can add sub-sessions.
+        </div>
+        {% elif sub_sessions %}
+        <table class="data-table">
+            <thead><tr><th>#</th><th>Title</th><th>Start</th><th>End</th><th></th></tr></thead>
+            <tbody>
+            {% for sub in sub_sessions %}
+            <tr id="subRow{{ sub.id }}">
+                <td style="color:var(--text-tertiary);font-size:12px;">{{ sub.display_order }}</td>
+                <td style="font-weight:600;font-size:13px;">{{ sub.title }}</td>
+                <td style="font-size:12px;color:var(--text-secondary);">{{ sub.start_datetime|date:"H:i"|default:"—" }}</td>
+                <td style="font-size:12px;color:var(--text-secondary);">{{ sub.end_datetime|date:"H:i"|default:"—" }}</td>
+                <td>
+                    <button type="button" class="btn btn-danger btn-sm"
+                            onclick="deleteSub({{ sub.id }}, this)">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="padding:20px;text-align:center;color:var(--text-tertiary);font-size:13px;">
+            No sub-sessions yet. Click <strong>Add</strong> to create one.
+        </div>
+        {% endif %}
+    </div>
+
+    {% if mode == 'edit' %}
+    <!-- Add sub-session inline form (hidden) -->
+    <div id="addSubForm" style="display:none;padding:16px;border-top:1px solid var(--border);background:var(--bg);">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div style="grid-column:1/-1;">
+                <label class="form-label">Sub-Session Title *</label>
+                <input class="form-control" id="subTitle" placeholder="e.g. Invited Talk">
+            </div>
+            <div>
+                <label class="form-label">Start Time</label>
+                <input type="datetime-local" class="form-control" id="subStart">
+            </div>
+            <div>
+                <label class="form-label">End Time</label>
+                <input type="datetime-local" class="form-control" id="subEnd">
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveSub()">
+                <i class="fas fa-check"></i> Save Sub-Session
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="hideAddSub()">Cancel</button>
+        </div>
+    </div>
+    {% endif %}
+</div>
+</div>
+
+<!-- Right column — flags & feedback -->
+<div>
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><h3>Visibility & Flags</h3></div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:14px;">
+
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="checkbox" name="is_published" style="margin-top:3px;width:16px;height:16px;"
+                   {% if not session or session.is_published %}checked{% endif %}>
+            <div>
+                <div style="font-size:14px;font-weight:600;">Published</div>
+                <div style="font-size:11px;color:var(--text-tertiary);">Visible to app users</div>
+            </div>
+        </label>
+
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="checkbox" name="is_featured" style="margin-top:3px;width:16px;height:16px;"
+                   {% if session and session.is_featured %}checked{% endif %}>
+            <div>
+                <div style="font-size:14px;font-weight:600;">★ Featured Session</div>
+                <div style="font-size:11px;color:var(--text-tertiary);">Highlighted in the app. Gets 1-hr push to ALL.</div>
+            </div>
+        </label>
+
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="checkbox" name="is_parallel" style="margin-top:3px;width:16px;height:16px;"
+                   {% if session and session.is_parallel %}checked{% endif %}>
+            <div>
+                <div style="font-size:14px;font-weight:600;">Parallel Session</div>
+                <div style="font-size:11px;color:var(--text-tertiary);">Runs alongside another session same time.</div>
+            </div>
+        </label>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><h3>Feedback Settings</h3></div>
+    <div class="card-body" style="display:flex;flex-direction:column;gap:14px;">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="checkbox" name="feedback_enabled" style="margin-top:3px;width:16px;height:16px;"
+                   {% if session and session.feedback_enabled %}checked{% endif %}>
+            <div>
+                <div style="font-size:14px;font-weight:600;">Enable Feedback</div>
+                <div style="font-size:11px;color:var(--text-tertiary);">Creates a default feedback form automatically. Customize after saving.</div>
+            </div>
+        </label>
+
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="checkbox" name="feedback_auto_open" style="margin-top:3px;width:16px;height:16px;"
+                   {% if not session or session.feedback_auto_open %}checked{% endif %}>
+            <div>
+                <div style="font-size:14px;font-weight:600;">Auto-open at Session End</div>
+                <div style="font-size:11px;color:var(--text-tertiary);">Feedback opens automatically when end time passes</div>
+            </div>
+        </label>
+
+        {% if mode == 'edit' and session.feedback_enabled %}
+        <div style="border-top:1px solid var(--border);padding-top:12px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                {% if session.feedback_open %}
+                <span class="badge badge-success">Feedback OPEN</span>
+                {% else %}
+                <span class="badge badge-warning">Feedback CLOSED</span>
+                {% endif %}
+                {% if session.feedback_manual_open %}
+                <span class="badge badge-info">Manually Opened</span>
+                {% endif %}
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a href="{% url 'schedule_feedback_manage' session.pk %}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-clipboard-list"></i> Manage Questions
+                </a>
+                <a href="{% url 'schedule_analytics' session.pk %}" class="btn btn-secondary btn-sm">
+                    <i class="fas fa-chart-bar"></i> View Responses ({{ session.feedback_responses.count }})
+                </a>
+            </div>
+        </div>
+        {% elif mode == 'edit' and not session.feedback_enabled %}
+        <div style="font-size:12px;color:var(--text-tertiary);font-style:italic;">
+            Enable feedback above to configure the form.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div style="display:flex;gap:10px;flex-direction:column;">
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
+        <i class="fas fa-check"></i> {% if mode == 'edit' %}Save Changes{% else %}Create Session{% endif %}
+    </button>
+    <a href="{% url 'schedule_panel' %}" class="btn btn-secondary" style="width:100%;justify-content:center;">Cancel</a>
+</div>
+</div>
+
+</div><!-- end grid -->
+</form>
+
+{% if mode == 'edit' %}
+{% block scripts %}
+<script>
+const SESSION_PK = "{{ session.pk }}";
+const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+function showAddSub()  { document.getElementById('addSubForm').style.display='block'; document.getElementById('subTitle').focus(); }
+function hideAddSub()  { document.getElementById('addSubForm').style.display='none'; ['subTitle','subStart','subEnd'].forEach(function(id){document.getElementById(id).value='';}); }
+
+async function saveSub() {
+    var title = document.getElementById('subTitle').value.trim();
+    if (!title) { alert('Title is required'); return; }
+    var body = {
+        title: title,
+        start_datetime: document.getElementById('subStart').value || null,
+        end_datetime:   document.getElementById('subEnd').value   || null,
+    };
+    var res  = await fetch('/panel/schedule/' + SESSION_PK + '/subsessions/add/', {
+        method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF}, body:JSON.stringify(body)
+    });
+    var data = await res.json();
+    if (data.success) { location.reload(); }
+    else { alert('Error: ' + data.error); }
+}
+
+async function deleteSub(id, btn) {
+    if (!confirm('Remove this sub-session?')) return;
+    var res  = await fetch('/panel/schedule/subsessions/' + id + '/delete/', {
+        method:'POST', headers:{'X-CSRFToken':CSRF}
+    });
+    var data = await res.json();
+    if (data.success) { document.getElementById('subRow'+id).remove(); }
+    else { alert('Error: ' + data.error); }
+}
+</script>
+{% endblock %}
+{% endif %}
+{% endblock %}

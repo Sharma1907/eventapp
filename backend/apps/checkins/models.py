@@ -4,13 +4,7 @@ import uuid
 
 
 class CheckIn(models.Model):
-    TYPE_CONFERENCE = 'conference'
-    TYPE_CHOICES = [('conference', 'Conference')]
-
-    GOODIES_PENDING  = 'pending'
-    GOODIES_RECEIVED = 'received'
-    GOODIES_SKIPPED  = 'skipped'
-    GOODIES_CHOICES  = [
+    GOODIES_CHOICES = [
         ('pending',  'Pending'),
         ('received', 'Received'),
         ('skipped',  'Skipped'),
@@ -19,7 +13,7 @@ class CheckIn(models.Model):
     user         = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='checkins'
     )
-    checkin_type  = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_CONFERENCE)
+    checkin_type  = models.CharField(max_length=20, default='conference')
     scanned_by    = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='scanned_checkins'
@@ -27,7 +21,7 @@ class CheckIn(models.Model):
     scanned_at    = models.DateTimeField(auto_now_add=True)
     notes         = models.CharField(max_length=200, blank=True)
 
-    goodies_status       = models.CharField(max_length=20, choices=GOODIES_CHOICES, default=GOODIES_PENDING)
+    goodies_status       = models.CharField(max_length=20, choices=GOODIES_CHOICES, default='pending')
     goodies_note         = models.TextField(blank=True)
     goodies_confirmed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -45,26 +39,22 @@ class CheckIn(models.Model):
 
 
 class MealPass(models.Model):
-    MEAL_CHOICES = [('lunch', 'Lunch'), ('dinner', 'Dinner')]
+    # 'meal' = unified, old lunch/dinner kept for any existing rows
+    MEAL_CHOICES = [('meal', 'Meal'), ('lunch', 'Lunch'), ('dinner', 'Dinner')]
 
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user       = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='meal_passes'
     )
-    meal_type  = models.CharField(max_length=20, choices=MEAL_CHOICES)
+    meal_type  = models.CharField(max_length=20, choices=MEAL_CHOICES, default='meal')
     date       = models.DateField()
-
-    # Activation — set when admin opens the pass window
     is_active  = models.BooleanField(default=True)
-
-    # Usage — set when staff scans
     used       = models.BooleanField(default=False)
     used_at    = models.DateTimeField(null=True, blank=True)
     scanned_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='meal_scans'
     )
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -77,13 +67,9 @@ class MealPass(models.Model):
 
 
 class MealWindow(models.Model):
-    """
-    Admin opens a meal window — users can then generate their pass.
-    Only one active window per meal_type per date at a time.
-    """
-    MEAL_CHOICES = [('lunch', 'Lunch'), ('dinner', 'Dinner')]
+    MEAL_CHOICES = [('meal', 'Meal'), ('lunch', 'Lunch'), ('dinner', 'Dinner')]
 
-    meal_type  = models.CharField(max_length=20, choices=MEAL_CHOICES)
+    meal_type  = models.CharField(max_length=20, choices=MEAL_CHOICES, default='meal')
     date       = models.DateField()
     is_open    = models.BooleanField(default=True)
     opened_by  = models.ForeignKey(

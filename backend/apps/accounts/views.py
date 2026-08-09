@@ -275,3 +275,111 @@ def user_action_view(request, pk):
         return Response({'success': True, 'action': 'unsuspended'})
 
     return Response({'error': 'action must be warn | suspend | unsuspend'}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def participant_create_view(request):
+    """
+    Admin-only: create a single participant account.
+    Body: { first_name, last_name, email, registration_id(opt),
+            phone, affiliation, designation, gender, send_email }
+    Registration ID auto-generated (ETD-2026-S-XXX) if not provided.
+    """
+    if not _is_admin(request.user):
+        return Response({'error': 'Permission denied'}, status=403)
+
+    email = (request.data.get('email') or '').strip().lower()
+    first_name = (request.data.get('first_name') or '').strip()
+    last_name  = (request.data.get('last_name') or '').strip()
+
+    if not email or '@' not in email:
+        return Response({'error': 'Valid email is required.'}, status=400)
+    if not first_name:
+        return Response({'error': 'First name is required.'}, status=400)
+
+    if User.objects.filter(email=email).exists():
+        return Response({'error': f'Email {email} is already registered.'}, status=400)
+
+    # Auto-generate reg ID if not supplied
+    reg_id = (request.data.get('registration_id') or '').strip() or None
+    if reg_id and User.objects.filter(registration_id=reg_id).exists():
+        return Response({'error': f'Registration ID {reg_id} already exists.'}, status=400)
+
+    if not reg_id:
+        # replicate _next_single_reg_id logic inline — no import needed
+        last = (
+            User.objects.filter(registration_id__startswith='ETD-2026-S-')
+            .order_by('-registration_id')
+            .values_list('registration_id', flat=True)
+            .first()
+        )
+        try:
+            num = int(last.split('-')[-1]) + 1 if last else 1
+        except (ValueError, AttributeError):
+            num = 1
+        reg_id = f'ETD-2026-S-{num:03d}'
+
+    import secrets, string
+    alphabet = string.ascii_letters + string.digits
+    while True:
+        temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+        if (any(c.isupper() for c in temp_password)
+                and any(c.islower() for c in temp_password)
+                and any(c.isdigit() for c in temp_password)):
+            break
+
+    try:
+        user = User.objects.create_user(
+            email           = email,
+            password        = temp_password,
+            first_name      = first_name,
+            last_name       = last_name,
+            phone           = (request.data.get('phone') or '').strip(),
+            affiliation     = (request.data.get('affiliation') or '').strip(),
+            designation     = (request.data.get('designation') or '').strip(),
+            gender          = (request.data.get('gender') or '').strip(),
+            registration_id = reg_id,
+            role            = 'participant',
+            must_change_password = True,
+            is_active       = True,
+        )
+    except Exception as exc:
+        return Response({'error': str(exc)}, status=400)
+
+    # Award signup points — non-critical
+    try:
+        from apps.leaderboard.utils import award_points
+        from apps.leaderboard.models import PointAction
+        award_points(user, PointAction.SIGNUP, 'Welcome to ETD 2026')
+    except Exception:
+        pass
+
+    # Email — only if requested
+    if request.data.get('send_email'):
+        try:
+            from django.core.mail import send_mail
+            send_mail(
+                subject='ETD 2026 — Your Login Credentials',
+                message=(
+                    f"Dear {user.get_full_name()},\n\n"
+                    f"Welcome to ETD 2026!\n\n"
+                    f"  Email:    {email}\n"
+                    f"  Password: {temp_password}\n\n"
+                    f"Login at: https://etd2026.iitd.ac.in\n\n"
+                    f"IMPORTANT: You will be asked to change your password on first login.\n\n"
+                    f"Regards,\nETD 2026 Organising Committee\nIIT Delhi"
+                ),
+                from_email=None,
+                recipient_list=[email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass
+
+    return Response({
+        'success':         True,
+        'message':         f'{user.get_full_name()} created successfully.',
+        'registration_id': reg_id,
+        'email':           email,
+    }, status=201)

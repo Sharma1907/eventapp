@@ -1,0 +1,166 @@
+{% extends 'panel/base.html' %}
+{% block title %}Feedback Form — {{ session.title }}{% endblock %}
+{% block page_title %}Feedback Form{% endblock %}
+{% block page_subtitle %}{{ session.title }} — Day {{ session.day }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex;align-items:center;gap:12px;">
+        <a href="{% url 'schedule_panel' %}" class="btn btn-secondary btn-sm">
+            <i class="fas fa-arrow-left"></i> Back
+        </a>
+        <div>
+            <strong>{{ response_count }}</strong> response{{ response_count|pluralize }} submitted
+        </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <button class="btn btn-{% if session.feedback_manual_open %}danger{% else %}primary{% endif %} btn-sm"
+                onclick="toggleFeedback()">
+            <i class="fas fa-{% if session.feedback_manual_open %}lock{% else %}unlock{% endif %}"></i>
+            {% if session.feedback_manual_open %}Close Feedback{% else %}Open Feedback Manually{% endif %}
+        </button>
+        <a href="{% url 'schedule_analytics' session.pk %}" class="btn btn-secondary btn-sm">
+            <i class="fas fa-chart-bar"></i> Analytics
+        </a>
+    </div>
+</div>
+
+<!-- Status card -->
+<div class="card" style="margin-bottom:20px;border-left:4px solid {% if session.feedback_open %}var(--success){% else %}var(--border){% endif %};">
+    <div class="card-body" style="display:flex;align-items:center;gap:16px;">
+        <div style="font-size:28px;">{% if session.feedback_open %}✅{% else %}🔒{% endif %}</div>
+        <div>
+            <div style="font-weight:700;font-size:15px;">
+                Feedback is currently {% if session.feedback_open %}OPEN{% else %}CLOSED{% endif %}
+            </div>
+            <div style="font-size:12px;color:var(--text-tertiary);margin-top:4px;">
+                Auto-open: {% if session.feedback_auto_open %}Yes (opens at session end time){% else %}No{% endif %} ·
+                Manual: {% if session.feedback_manual_open %}Manually opened{% else %}Not manually opened{% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Questions -->
+<div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <h3>Questions <span style="color:var(--text-tertiary);font-size:13px;font-weight:500;">({{ questions|length }})</span></h3>
+        <button type="button" class="btn btn-primary btn-sm" onclick="showAddQ()">
+            <i class="fas fa-plus"></i> Add Question
+        </button>
+    </div>
+    <div class="card-body" style="padding:0;" id="qList">
+        {% if questions %}
+        <table class="data-table">
+            <thead><tr><th>#</th><th>Question</th><th>Type</th><th>Required</th><th></th></tr></thead>
+            <tbody>
+            {% for q in questions %}
+            <tr id="qRow{{ q.id }}">
+                <td style="color:var(--text-tertiary);font-size:12px;">{{ q.display_order }}</td>
+                <td style="font-size:13px;font-weight:500;">{{ q.question_text }}</td>
+                <td>
+                    <span class="badge {% if q.question_type == 'rating' %}badge-info{% elif q.question_type == 'boolean' %}badge-success{% else %}badge-warning{% endif %}">
+                        {{ q.get_question_type_display }}
+                    </span>
+                </td>
+                <td>
+                    {% if q.is_required %}
+                        <span class="badge badge-danger">Required</span>
+                    {% else %}
+                        <span style="color:var(--text-tertiary);font-size:12px;">Optional</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="deleteQ({{ q.id }})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="padding:24px;text-align:center;color:var(--text-tertiary);font-size:13px;">
+            No questions yet. Add your first question.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Add question inline form -->
+    <div id="addQForm" style="display:none;padding:16px;border-top:1px solid var(--border);background:var(--bg);">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div>
+                <label class="form-label">Question Text *</label>
+                <input class="form-control" id="qText" placeholder="e.g. How would you rate this session?">
+            </div>
+            <div>
+                <label class="form-label">Type</label>
+                <select class="form-control" id="qType">
+                    <option value="rating">Star Rating (1–5)</option>
+                    <option value="boolean">Yes / No</option>
+                    <option value="text">Free Text</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label">Required?</label>
+                <select class="form-control" id="qRequired">
+                    <option value="1">Yes</option>
+                    <option value="0">No</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveQ()">
+                <i class="fas fa-check"></i> Add Question
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="hideAddQ()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+const SESSION_PK = "{{ session.pk }}";
+const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+function showAddQ() { document.getElementById('addQForm').style.display='block'; document.getElementById('qText').focus(); }
+function hideAddQ() { document.getElementById('addQForm').style.display='none'; document.getElementById('qText').value=''; }
+
+async function saveQ() {
+    const text = document.getElementById('qText').value.trim();
+    if (!text) { alert('Question text is required'); return; }
+    const body = {
+        question_text: text,
+        question_type: document.getElementById('qType').value,
+        is_required:   document.getElementById('qRequired').value === '1',
+    };
+    const res  = await fetch(`/panel/schedule/${SESSION_PK}/feedback/question/add/`, {
+        method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF}, body:JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) { location.reload(); }
+    else { alert('Error: ' + data.error); }
+}
+
+async function deleteQ(id) {
+    if (!confirm('Delete this question? Existing responses will be affected.')) return;
+    const res  = await fetch(`/panel/schedule/feedback/question/${id}/delete/`, {
+        method:'POST', headers:{'X-CSRFToken':CSRF}
+    });
+    const data = await res.json();
+    if (data.success) { document.getElementById('qRow'+id).remove(); }
+    else { alert('Error: ' + data.error); }
+}
+
+async function toggleFeedback() {
+    const res  = await fetch(`/panel/schedule/${SESSION_PK}/feedback/toggle/`, {
+        method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':CSRF},
+        body:JSON.stringify({field:'feedback_manual_open'})
+    });
+    const data = await res.json();
+    if (data.success) { location.reload(); }
+    else { alert('Error: ' + data.error); }
+}
+</script>
+{% endblock %}
+{% endblock %}

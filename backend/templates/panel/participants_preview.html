@@ -16,7 +16,7 @@
 {% if duplicates %}
   <div class="alert alert-warning">
     <i class="fas fa-triangle-exclamation"></i>
-    <strong>{{ duplicates }}</strong> email(s) already exist and will be skipped during import.
+    <strong>{{ duplicates }}</strong> duplicate(s) found and will be skipped during import.
   </div>
 {% endif %}
 
@@ -34,6 +34,7 @@
           <tr>
             <th>Name</th>
             <th>Email</th>
+            <th>Reg ID</th>
             <th>Organisation</th>
             <th>Mobile</th>
             <th>Status</th>
@@ -47,11 +48,12 @@
               {% if item.obj.salutation %}{{ item.obj.salutation }} {% endif %}{{ item.obj.full_name }}
             </td>
             <td>{{ item.obj.email }}</td>
+            <td><code>{{ item.obj.registration_id|default:"—" }}</code></td>
             <td>{{ item.obj.organisation|default:"—" }}</td>
             <td>{{ item.obj.mobile|default:"—" }}</td>
             <td>
               {% if item.duplicate %}
-                <span class="badge badge-warning">Duplicate</span>
+                <span class="badge badge-warning" title="{{ item.dup_reason }}">Duplicate</span>
               {% else %}
                 <span class="badge badge-success">New</span>
               {% endif %}
@@ -68,7 +70,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="6">
+            <td colspan="7">
               <div class="empty-state">
                 <i class="fas fa-inbox"></i>
                 <h3>No rows staged</h3>
@@ -85,17 +87,23 @@
 </div>
 
 {% if rows %}
-<div style="display:flex;align-items:center;gap:16px;">
+<div style="display:flex;flex-direction:column;gap:16px;max-width:600px;">
   <form method="post" action="{% url 'participants_confirm' %}">
     {% csrf_token %}
-    <button type="submit" class="btn btn-primary"
-            onclick="return confirm('Create {{ total }} user account(s) and send credential emails?')">
-      <i class="fas fa-paper-plane"></i> Confirm &amp; Send Credentials
-    </button>
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:16px;">
+      <input type="checkbox" name="send_email" style="width:18px;height:18px;">
+      <span style="font-size:14px;">Send login credentials via email to all participants</span>
+    </label>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <button type="submit" class="btn btn-primary"
+              onclick="return confirm('Create {{ total }} user account(s)?')">
+        <i class="fas fa-check-circle"></i> Confirm Import
+      </button>
+      <span style="font-size:13px;color:var(--text-tertiary);">
+        This will create user accounts for {{ total }} participant(s).
+      </span>
+    </div>
   </form>
-  <span style="font-size:13px;color:var(--text-tertiary);">
-    This will create user accounts and email login credentials to each participant.
-  </span>
 </div>
 {% endif %}
 {% endblock %}

@@ -10,6 +10,7 @@ urlpatterns = [
 
     # Participant import flow
     path('participants/',                   admin_views.participants_list,       name='participants_list'),
+    path('participants/add/',               admin_views.participant_add,         name='participant_add'),
     path('participants/upload/',            admin_views.participants_upload,     name='participants_upload'),
     path('participants/preview/',           admin_views.participants_preview,    name='participants_preview'),
     path('participants/confirm/',           admin_views.participants_confirm,    name='participants_confirm'),

@@ -82,3 +82,8 @@ def send_to_user(user,title,body,data,notif,request=None):
     users=_target_users('user','',user); _create_rows(notif,users)
     tokens=list(DeviceToken.objects.filter(is_active=True,user=user).values_list('token',flat=True))
     return _send_hybrid(tokens,title,body,data,_cover_url(notif,request))
+
+
+# Public alias — used by checkins and schedule reminders
+def send_to_tokens(tokens, title, body, data=None, img=None):
+    return _send_hybrid(tokens, title, body, data or {}, img)

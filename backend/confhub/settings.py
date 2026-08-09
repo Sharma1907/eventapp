@@ -42,14 +42,15 @@ LOCAL_APPS = [
     
     'apps.leaderboard',
     'apps.chat',
+    'apps.schedule',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'confhub.middleware.DisableCSRFForAPI',
@@ -152,6 +153,11 @@ REST_FRAMEWORK = {
 
 # CORS - Allow everything in development
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.exp\.direct$",
+    r"^https://.*\.app\.github\.dev$",
+    r"^http://localhost:\d+$",
+]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',

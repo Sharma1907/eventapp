@@ -16,7 +16,7 @@ function QRCodeSVG({ value, size = 200, color = '#0a1628' }) {
   qr.addData(value);
   qr.make();
   const count = qr.getModuleCount();
-  const cs = size / count;
+  const cs    = size / count;
   const cells = [];
   for (let r = 0; r < count; r++)
     for (let c = 0; c < count; c++)
@@ -25,17 +25,17 @@ function QRCodeSVG({ value, size = 200, color = '#0a1628' }) {
   return <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>{cells}</Svg>;
 }
 
-// ── Module-level flag: popup shown once per app session ────────────────────
+// ── Check-In Popup (shown once per session after scan) ────────────────────
 let _popupShownThisSession = false;
 
 function CheckInPopup({ visible, onClose, data }) {
-  const scale = useRef(new Animated.Value(0.7)).current;
+  const scale   = useRef(new Animated.Value(0.7)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
       Animated.parallel([
-        Animated.spring(scale, { toValue: 1, tension: 65, friction: 8, useNativeDriver: true }),
+        Animated.spring(scale,   { toValue: 1, tension: 65, friction: 8, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }),
       ]).start();
     }
@@ -65,14 +65,20 @@ function CheckInPopup({ visible, onClose, data }) {
               <Ionicons name="time-outline" size={16} color={COLORS.textTer} />
               <Text style={pop.infoLabel}>Checked in at</Text>
               <Text style={pop.infoValue}>
-                {data.scanned_at ? new Date(data.scanned_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now'}
+                {data.scanned_at
+                  ? new Date(data.scanned_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : 'Just now'}
               </Text>
             </View>
             <View style={[pop.infoRow, { borderTopWidth: 1, borderTopColor: COLORS.borderLight }]}>
               <Ionicons name="gift-outline" size={16} color={COLORS.textTer} />
-              <Text style={pop.infoLabel}>Goodies bag</Text>
-              <Text style={[pop.infoValue, { color: data.goodies_status === 'received' ? COLORS.success : COLORS.accent }]}>
-                {data.goodies_status === 'received' ? '✓ Received' : data.goodies_status === 'skipped' ? 'Not received' : 'Pending'}
+              <Text style={pop.infoLabel}>Conference Kit</Text>
+              <Text style={[pop.infoValue, {
+                color: data.goodies_status === 'received' ? COLORS.success : COLORS.accent
+              }]}>
+                {data.goodies_status === 'received' ? '✓ Received'
+                  : data.goodies_status === 'skipped' ? 'Not received'
+                  : 'Pending'}
               </Text>
             </View>
           </View>
@@ -87,9 +93,9 @@ function CheckInPopup({ visible, onClose, data }) {
   );
 }
 
-// ── Meal Pass QR Modal ────────────────────────────────────────────────────
+// ── Meal Pass Modal ────────────────────────────────────────────────────────
 function MealPassModal({ visible, pass, onClose }) {
-  const scale = useRef(new Animated.Value(0.7)).current;
+  const scale   = useRef(new Animated.Value(0.7)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -97,32 +103,30 @@ function MealPassModal({ visible, pass, onClose }) {
       scale.setValue(0.7);
       opacity.setValue(0);
       Animated.parallel([
-        Animated.spring(scale, { toValue: 1, tension: 65, friction: 8, useNativeDriver: true }),
+        Animated.spring(scale,   { toValue: 1, tension: 65, friction: 8, useNativeDriver: true }),
         Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
       ]).start();
     }
   }, [visible]);
 
   if (!visible || !pass) return null;
-  const icon = pass.meal_type === 'lunch' ? '🍽️' : '🍷';
 
   return (
     <Modal transparent visible={visible} animationType="none">
       <Animated.View style={[pop.overlay, { opacity }]}>
         <Animated.View style={[pop.popup, { transform: [{ scale }] }]}>
-          <LinearGradient
-            colors={pass.meal_type === 'lunch' ? [COLORS.accent, COLORS.accentDark] : [COLORS.purple, '#6d28d9']}
-            style={ml.modalHeader}
-          >
-            <Text style={{ fontSize: 44 }}>{icon}</Text>
-            <Text style={ml.modalTitle}>{pass.meal_type.toUpperCase()} PASS</Text>
+          <LinearGradient colors={[COLORS.brand, COLORS.brandDark]} style={ml.modalHeader}>
+            <Text style={{ fontSize: 44 }}>🍽️</Text>
+            <Text style={ml.modalTitle}>MEAL PASS</Text>
             <Text style={ml.modalDate}>{pass.date}</Text>
           </LinearGradient>
           <View style={ml.modalBody}>
             {pass.used ? (
               <View style={{ alignItems: 'center', paddingVertical: SPACE.xl, gap: SPACE.sm }}>
                 <Ionicons name="close-circle" size={56} color={COLORS.error} />
-                <Text style={{ fontSize: FONT.md, fontWeight: '700', color: COLORS.error }}>Already Used</Text>
+                <Text style={{ fontSize: FONT.md, fontWeight: '700', color: COLORS.error }}>
+                  Already Used
+                </Text>
               </View>
             ) : (
               <View style={ml.qrWrap}>
@@ -130,7 +134,7 @@ function MealPassModal({ visible, pass, onClose }) {
               </View>
             )}
             {!pass.used && (
-              <Text style={ml.hint}>Show this QR to staff at the {pass.meal_type} venue</Text>
+              <Text style={ml.hint}>Show this QR to staff at the meal venue</Text>
             )}
           </View>
           <TouchableOpacity style={ml.closeBtn} onPress={onClose}>
@@ -142,24 +146,22 @@ function MealPassModal({ visible, pass, onClose }) {
   );
 }
 
-// ── Main QR Screen ────────────────────────────────────────────────────────
+// ── Main QR Screen ─────────────────────────────────────────────────────────
 export default function QRScreen({ user, tokens }) {
-  const sc = useRef(new Animated.Value(0.88)).current;
-  const op = useRef(new Animated.Value(0)).current;
-  const [qrData,     setQrData]     = useState(null);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [statusData, setStatusData] = useState(null);
-  const [showPopup,  setShowPopup]  = useState(false);
+  const sc  = useRef(new Animated.Value(0.88)).current;
+  const op  = useRef(new Animated.Value(0)).current;
 
-  // Meal pass state
-  const [mealWindows,    setMealWindows]    = useState([]);
-  const [generating,     setGenerating]     = useState('');
-  const [activeMealPass, setActiveMealPass] = useState(null);
-  const [showMealModal,  setShowMealModal]  = useState(false);
+  const [qrData,        setQrData]        = useState(null);
+  const [loading,       setLoading]       = useState(true);
+  const [error,         setError]         = useState(null);
+  const [refreshing,    setRefreshing]    = useState(false);
+  const [statusData,    setStatusData]    = useState(null);
+  const [showPopup,     setShowPopup]     = useState(false);
+  const [mealWindow,    setMealWindow]    = useState(null);   // single window or null
+  const [generating,    setGenerating]    = useState(false);
+  const [activeMealPass,setActiveMealPass]= useState(null);
+  const [showMealModal, setShowMealModal] = useState(false);
 
-  // Refs for polling control
   const checkedInRef = useRef(false);
   const mountedRef   = useRef(true);
 
@@ -178,9 +180,9 @@ export default function QRScreen({ user, tokens }) {
     try {
       const headers = { ...API_HEADERS, Authorization: `Bearer ${tokens?.access}` };
       const [qrRes, statusRes, mealRes] = await Promise.all([
-        fetch(`${API_URL}/checkins/my-qr/`, { headers }),
-        fetch(`${API_URL}/checkins/status/`, { headers }),
-        fetch(`${API_URL}/checkins/meal/status/`, { headers }).catch(() => null),
+        fetch(`${API_URL}/checkins/my-qr/`,       { headers }),
+        fetch(`${API_URL}/checkins/status/`,       { headers }),
+        fetch(`${API_URL}/checkins/meal/status/`,  { headers }).catch(() => null),
       ]);
       if (!mountedRef.current) return;
       if (!qrRes.ok) throw new Error('Failed');
@@ -191,47 +193,38 @@ export default function QRScreen({ user, tokens }) {
 
       setQrData(qr);
       setStatusData(st);
-      setMealWindows(meal.windows || []);
+      // Single window — just take first open window
+      setMealWindow(meal.windows?.[0] || null);
 
-      // Show popup ONCE — only if checked in within last 60s
       if (st.checked_in && !_popupShownThisSession) {
         const scannedAt = st.scanned_at ? new Date(st.scanned_at).getTime() : 0;
-        if (Date.now() - scannedAt < 60000) {
-          setShowPopup(true);
-        }
+        if (Date.now() - scannedAt < 60000) setShowPopup(true);
         _popupShownThisSession = true;
       }
-
       checkedInRef.current = st.checked_in;
-    } catch (e) {
+    } catch {
       if (mountedRef.current) setError('Could not load QR. Check connection.');
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      if (mountedRef.current) { setLoading(false); setRefreshing(false); }
     }
   };
 
-  // Initial load — once
   useEffect(() => { load(); }, []);
 
-  // Poll every 10s ONLY if not checked in yet — stops after check-in
   useEffect(() => {
     const interval = setInterval(() => {
       if (!checkedInRef.current) load(false);
-    }, 10000);
+    }, 300000);
     return () => clearInterval(interval);
   }, []);
 
-  // Meal pass generation
-  const generateMealPass = async (mealType) => {
-    setGenerating(mealType);
+  const generateMealPass = async () => {
+    setGenerating(true);
     try {
-      const res = await fetch(`${API_URL}/checkins/meal/generate/`, {
+      const res  = await fetch(`${API_URL}/checkins/meal/generate/`, {
         method:  'POST',
         headers: { ...API_HEADERS, Authorization: `Bearer ${tokens?.access}` },
-        body:    JSON.stringify({ meal_type: mealType }),
+        body:    JSON.stringify({ meal_type: 'meal' }),
       });
       const data = await res.json();
       if (data.success) {
@@ -239,8 +232,8 @@ export default function QRScreen({ user, tokens }) {
         setShowMealModal(true);
         load();
       }
-    } catch (_) {}
-    finally { setGenerating(''); }
+    } catch { /* silent */ }
+    finally { setGenerating(false); }
   };
 
   if (loading) {
@@ -263,29 +256,18 @@ export default function QRScreen({ user, tokens }) {
 
   const checkedIn = statusData?.checked_in;
 
-  const MEAL_CONFIG = {
-    lunch:  { icon: '🍽️', label: 'Lunch',  color: COLORS.accent, bg: COLORS.accentLight },
-    dinner: { icon: '🍷', label: 'Dinner', color: COLORS.purple, bg: COLORS.purpleLight },
-  };
-
   return (
     <>
-      <CheckInPopup
-        visible={showPopup}
-        data={statusData}
-        onClose={() => setShowPopup(false)}
-      />
-      <MealPassModal
-        visible={showMealModal}
-        pass={activeMealPass}
-        onClose={() => setShowMealModal(false)}
-      />
+      <CheckInPopup visible={showPopup} data={statusData} onClose={() => setShowPopup(false)} />
+      <MealPassModal visible={showMealModal} pass={activeMealPass} onClose={() => setShowMealModal(false)} />
 
       <ScrollView
         style={s.bg}
         contentContainerStyle={s.container}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.brand} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={COLORS.brand} />
+        }
       >
         <View style={s.header}>
           <Text style={s.title}>My QR Code</Text>
@@ -312,7 +294,7 @@ export default function QRScreen({ user, tokens }) {
                 {statusData?.goodies_status === 'received' && (
                   <View style={s.goodiesPill}>
                     <Ionicons name="gift" size={11} color={COLORS.accent} />
-                    <Text style={s.goodiesText}>Goodies ✓</Text>
+                    <Text style={s.goodiesText}>Kit ✓</Text>
                   </View>
                 )}
               </View>
@@ -347,7 +329,6 @@ export default function QRScreen({ user, tokens }) {
             </View>
 
             <View style={s.divider} />
-
             <View style={s.regRow}>
               <View style={s.regItem}>
                 <Text style={s.regL}>Registration ID</Text>
@@ -361,8 +342,8 @@ export default function QRScreen({ user, tokens }) {
                 </Text>
               </View>
             </View>
-
             <View style={s.divider} />
+
             <View style={s.footer}>
               <Ionicons name="shield-checkmark-outline" size={13} color={COLORS.success} />
               <Text style={s.footerText}>Verified attendee  ·  Valid for all 3 days</Text>
@@ -370,49 +351,45 @@ export default function QRScreen({ user, tokens }) {
           </View>
         </Animated.View>
 
-        {/* Meal Passes Section */}
-        {mealWindows.length > 0 && (
+        {/* Meal Pass Section — only shown when window is open */}
+        {mealWindow && (
           <FadeIn delay={200}>
-            <Text style={s.mealTitle}>Meal Passes</Text>
-            <Text style={s.mealSub}>Generate QR for lunch & dinner entry</Text>
-
-            {mealWindows.map((w) => {
-              const cfg = MEAL_CONFIG[w.meal_type] || MEAL_CONFIG.lunch;
-              return (
-                <View key={w.meal_type} style={s.mealCard}>
-                  <View style={[s.mealCardLeft, { backgroundColor: cfg.bg }]}>
-                    <Text style={{ fontSize: 28 }}>{cfg.icon}</Text>
-                  </View>
-                  <View style={s.mealCardCenter}>
-                    <Text style={s.mealCardLabel}>{cfg.label}</Text>
-                    <Text style={s.mealCardDate}>{w.date}</Text>
-                    {w.pass_used && (
-                      <Text style={{ fontSize: FONT.xs, color: COLORS.success, fontWeight: '600', marginTop: 2 }}>✓ Used</Text>
-                    )}
-                  </View>
-                  {w.pass_used ? (
-                    <View style={[s.mealBadge, { backgroundColor: COLORS.successLight }]}>
-                      <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={[s.mealBtn, { backgroundColor: cfg.color }]}
-                      onPress={() => generateMealPass(w.meal_type)}
-                      disabled={!!generating}
-                      activeOpacity={0.85}
-                    >
-                      {generating === w.meal_type ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={s.mealBtnText}>
-                          {w.pass_exists ? 'Show QR' : 'Generate'}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
+            <Text style={s.mealTitle}>Meal Pass</Text>
+            <Text style={s.mealSub}>Generate your QR pass for today's meal</Text>
+            <View style={s.mealCard}>
+              <View style={[s.mealCardLeft, { backgroundColor: COLORS.brandLight }]}>
+                <Text style={{ fontSize: 28 }}>🍽️</Text>
+              </View>
+              <View style={s.mealCardCenter}>
+                <Text style={s.mealCardLabel}>Today's Meal</Text>
+                <Text style={s.mealCardDate}>{mealWindow.date}</Text>
+                {mealWindow.pass_used && (
+                  <Text style={{ fontSize: FONT.xs, color: COLORS.success, fontWeight: '600', marginTop: 2 }}>
+                    ✓ Used
+                  </Text>
+                )}
+              </View>
+              {mealWindow.pass_used ? (
+                <View style={[s.mealBadge, { backgroundColor: COLORS.successLight }]}>
+                  <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
                 </View>
-              );
-            })}
+              ) : (
+                <TouchableOpacity
+                  style={[s.mealBtn, { backgroundColor: COLORS.brand }]}
+                  onPress={generateMealPass}
+                  disabled={generating}
+                  activeOpacity={0.85}
+                >
+                  {generating ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={s.mealBtnText}>
+                      {mealWindow.pass_exists ? 'Show QR' : 'Generate'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
           </FadeIn>
         )}
 
@@ -421,14 +398,13 @@ export default function QRScreen({ user, tokens }) {
             {checkedIn ? 'You are all set! Enjoy the conference.' : 'Keep screen brightness high when scanning'}
           </Text>
         </FadeIn>
-
         <View style={{ height: 120 }} />
       </ScrollView>
     </>
   );
 }
 
-// ── Popup Styles ──────────────────────────────────────────────────────────
+// ── Styles ─────────────────────────────────────────────────────────────────
 const pop = StyleSheet.create({
   overlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 32 },
   popup:        { width: '100%', maxWidth: 340, backgroundColor: '#fff', borderRadius: 28, padding: 28, alignItems: 'center',
@@ -448,9 +424,8 @@ const pop = StyleSheet.create({
   closeBtnText: { fontSize: FONT.md, fontWeight: '700', color: '#fff' },
 });
 
-// ── Meal Modal Styles ─────────────────────────────────────────────────────
 const ml = StyleSheet.create({
-  modalHeader: { alignItems: 'center', paddingVertical: SPACE.xl, paddingHorizontal: SPACE.xxl },
+  modalHeader: { alignItems: 'center', paddingVertical: SPACE.xl, paddingHorizontal: SPACE.xxl, borderRadius: 28 },
   modalTitle:  { fontSize: FONT.xl, fontWeight: '900', color: '#fff', letterSpacing: 1, marginTop: SPACE.sm },
   modalDate:   { fontSize: FONT.xs, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
   modalBody:   { padding: SPACE.xl, alignItems: 'center' },
@@ -459,61 +434,47 @@ const ml = StyleSheet.create({
   closeBtn:    { borderTopWidth: 1, borderTopColor: COLORS.borderLight, padding: SPACE.lg, alignItems: 'center' },
 });
 
-// ── Main Styles ───────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   bg:        { flex: 1, backgroundColor: '#f0f4f9' },
   container: { paddingHorizontal: SPACE.xl, paddingBottom: 48, alignItems: 'center' },
   center:    { flex: 1, backgroundColor: '#f0f4f9', justifyContent: 'center', alignItems: 'center', gap: SPACE.md },
-
   header:    { paddingTop: Platform.OS === 'ios' ? 58 : 46, paddingBottom: SPACE.lg, width: '100%' },
   title:     { fontSize: 28, fontWeight: '900', color: COLORS.brand, letterSpacing: -0.5 },
   sub:       { fontSize: FONT.xs, color: COLORS.textTer, marginTop: 3 },
-
   card: {
     width: '100%', borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.85)',
     overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
     ...Platform.select({ ios: { shadowColor: '#002182', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 24 }, android: { elevation: 0 } }),
   },
-  strip:     { paddingVertical: 12, alignItems: 'center' },
-  stripText: { fontSize: FONT.xs, fontWeight: FONT.w7, color: 'rgba(255,255,255,0.85)', letterSpacing: 1.5 },
-
-  checkedBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.xs, paddingVertical: SPACE.sm, backgroundColor: COLORS.successLight, flexWrap: 'wrap' },
-  checkedText:   { fontSize: FONT.xs, fontWeight: FONT.w6, color: COLORS.success },
-  goodiesPill:   { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: COLORS.accentLight, paddingHorizontal: SPACE.sm, paddingVertical: 2, borderRadius: RADIUS.full, marginLeft: SPACE.xs },
-  goodiesText:   { fontSize: 10, fontWeight: '700', color: COLORS.accent },
-
+  strip:          { paddingVertical: 12, alignItems: 'center' },
+  stripText:      { fontSize: FONT.xs, fontWeight: FONT.w7, color: 'rgba(255,255,255,0.85)', letterSpacing: 1.5 },
+  checkedBanner:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.xs, paddingVertical: SPACE.sm, backgroundColor: COLORS.successLight, flexWrap: 'wrap' },
+  checkedText:    { fontSize: FONT.xs, fontWeight: FONT.w6, color: COLORS.success },
+  goodiesPill:    { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: COLORS.accentLight, paddingHorizontal: SPACE.sm, paddingVertical: 2, borderRadius: RADIUS.full, marginLeft: SPACE.xs },
+  goodiesText:    { fontSize: 10, fontWeight: '700', color: COLORS.accent },
   qrWrap:         { alignItems: 'center', paddingVertical: SPACE.xxl, paddingHorizontal: SPACE.xxl, position: 'relative' },
   scannedOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   scannedCircle:  { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' },
-
-  regIdText: { textAlign: 'center', fontSize: FONT.xs, fontWeight: FONT.w7, color: COLORS.textTer, letterSpacing: 2, marginTop: -SPACE.lg, marginBottom: SPACE.lg },
-
-  userRow:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.xl, paddingBottom: SPACE.lg },
-  uName:        { fontSize: FONT.md, fontWeight: FONT.w7, color: COLORS.text },
-  uEmail:       { fontSize: FONT.xs, color: COLORS.textTer, marginTop: 2 },
-  rolePill:     { alignSelf: 'flex-start', marginTop: SPACE.xs, backgroundColor: COLORS.brandLight, paddingHorizontal: SPACE.sm, paddingVertical: 3, borderRadius: RADIUS.full },
-  rolePillText: { fontSize: 9, fontWeight: FONT.w8, color: COLORS.brand, letterSpacing: 0.5 },
-
-  divider: { height: 1, backgroundColor: COLORS.borderLight, marginHorizontal: SPACE.xl },
-
-  regRow:  { flexDirection: 'row', paddingHorizontal: SPACE.xl, paddingVertical: SPACE.lg },
-  regItem: { flex: 1, alignItems: 'center' },
-  regSep:  { width: 1, backgroundColor: COLORS.borderLight, marginVertical: SPACE.xs },
-  regL:    { fontSize: FONT.xs, color: COLORS.textTer, marginBottom: 4 },
-  regV:    { fontSize: FONT.sm, fontWeight: FONT.w7, color: COLORS.text, textAlign: 'center' },
-
-  footer:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.xs, paddingHorizontal: SPACE.xl, paddingVertical: SPACE.md },
-  footerText: { fontSize: FONT.xs, color: COLORS.textTer },
-
-  // Meal section
-  mealTitle: { fontSize: 22, fontWeight: '900', color: COLORS.brand, letterSpacing: -0.3, marginTop: SPACE.xxl, marginBottom: SPACE.xxs, width: '100%' },
-  mealSub:   { fontSize: FONT.xs, color: COLORS.textTer, marginBottom: SPACE.lg, width: '100%' },
-
+  regIdText:      { textAlign: 'center', fontSize: FONT.xs, fontWeight: FONT.w7, color: COLORS.textTer, letterSpacing: 2, marginTop: -SPACE.lg, marginBottom: SPACE.lg },
+  userRow:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.xl, paddingBottom: SPACE.lg },
+  uName:          { fontSize: FONT.md, fontWeight: FONT.w7, color: COLORS.text },
+  uEmail:         { fontSize: FONT.xs, color: COLORS.textTer, marginTop: 2 },
+  rolePill:       { alignSelf: 'flex-start', marginTop: SPACE.xs, backgroundColor: COLORS.brandLight, paddingHorizontal: SPACE.sm, paddingVertical: 3, borderRadius: RADIUS.full },
+  rolePillText:   { fontSize: 9, fontWeight: FONT.w8, color: COLORS.brand, letterSpacing: 0.5 },
+  divider:        { height: 1, backgroundColor: COLORS.borderLight, marginHorizontal: SPACE.xl },
+  regRow:         { flexDirection: 'row', paddingHorizontal: SPACE.xl, paddingVertical: SPACE.lg },
+  regItem:        { flex: 1, alignItems: 'center' },
+  regSep:         { width: 1, backgroundColor: COLORS.borderLight, marginVertical: SPACE.xs },
+  regL:           { fontSize: FONT.xs, color: COLORS.textTer, marginBottom: 4 },
+  regV:           { fontSize: FONT.sm, fontWeight: FONT.w7, color: COLORS.text, textAlign: 'center' },
+  footer:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.xs, paddingHorizontal: SPACE.xl, paddingVertical: SPACE.md },
+  footerText:     { fontSize: FONT.xs, color: COLORS.textTer },
+  mealTitle:      { fontSize: 22, fontWeight: '900', color: COLORS.brand, letterSpacing: -0.3, marginTop: SPACE.xxl, marginBottom: SPACE.xxs, width: '100%' },
+  mealSub:        { fontSize: FONT.xs, color: COLORS.textTer, marginBottom: SPACE.lg, width: '100%' },
   mealCard: {
     width: '100%', flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
-    marginBottom: SPACE.md, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', marginBottom: SPACE.md, overflow: 'hidden',
     ...Platform.select({ ios: { shadowColor: '#002182', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8 }, android: { elevation: 0 } }),
   },
   mealCardLeft:   { width: 64, height: 64, alignItems: 'center', justifyContent: 'center' },
@@ -523,8 +484,7 @@ const s = StyleSheet.create({
   mealBadge:      { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: SPACE.md },
   mealBtn:        { paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm + 2, borderRadius: 12, marginRight: SPACE.md },
   mealBtnText:    { fontSize: FONT.sm, fontWeight: '700', color: '#fff' },
-
-  hint:      { marginTop: SPACE.xl, fontSize: 12, color: COLORS.textTer, textAlign: 'center' },
-  errorText: { fontSize: FONT.sm, color: COLORS.error, textAlign: 'center' },
-  retry:     { fontSize: FONT.sm, color: COLORS.brand, fontWeight: FONT.w6 },
+  hint:           { marginTop: SPACE.xl, fontSize: 12, color: COLORS.textTer, textAlign: 'center' },
+  errorText:      { fontSize: FONT.sm, color: COLORS.error, textAlign: 'center' },
+  retry:          { fontSize: FONT.sm, color: COLORS.brand, fontWeight: FONT.w6 },
 });

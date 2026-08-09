@@ -1,0 +1,122 @@
+{% extends 'panel/base.html' %}
+{% block title %}Feedback Analytics — {{ session.title }}{% endblock %}
+{% block page_title %}Feedback Analytics{% endblock %}
+{% block page_subtitle %}{{ session.title }} — {{ total }} response{{ total|pluralize }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="{% url 'schedule_feedback_manage' session.pk %}" class="btn btn-secondary btn-sm">
+        <i class="fas fa-arrow-left"></i> Back to Form
+    </a>
+</div>
+
+{% if total == 0 %}
+<div class="empty-state">
+    <i class="fas fa-chart-bar"></i>
+    <h3>No responses yet</h3>
+    <p>Feedback will appear here once participants submit it.</p>
+</div>
+{% else %}
+
+<!-- Per-question stats -->
+<div style="display:grid;gap:16px;margin-bottom:28px;">
+{% for stat in q_stats %}
+<div class="card">
+    <div class="card-header">
+        <h3 style="font-size:14px;">{{ forloop.counter }}. {{ stat.q.question_text }}</h3>
+        <span class="badge badge-info">{{ stat.q.get_question_type_display }}</span>
+    </div>
+    <div class="card-body">
+        {% if stat.q.question_type == 'rating' %}
+            <div style="display:flex;align-items:center;gap:24px;">
+                <div style="text-align:center;">
+                    <div style="font-size:48px;font-weight:800;color:var(--primary);">{{ stat.avg|default:"—" }}</div>
+                    <div style="font-size:12px;color:var(--text-tertiary);">avg out of 5</div>
+                    <div style="color:#f59e0b;font-size:20px;margin-top:4px;">
+                        {% if stat.avg %}{% for i in "12345"|make_list %}{% if forloop.counter <= stat.avg|floatformat:"0"|add:"0" %}★{% else %}☆{% endif %}{% endfor %}{% endif %}
+                    </div>
+                </div>
+                <div style="flex:1;">
+                    {% for v,count in stat.dist.items %}
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                        <div style="width:20px;font-size:12px;font-weight:600;text-align:right;">{{ v }}★</div>
+                        <div style="flex:1;height:12px;background:var(--bg);border-radius:6px;overflow:hidden;">
+                            <div style="height:100%;background:var(--primary);border-radius:6px;width:{% if total %}{% widthratio count total 100 %}%{% else %}0{% endif %};"></div>
+                        </div>
+                        <div style="width:30px;font-size:12px;color:var(--text-tertiary);">{{ count }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% elif stat.q.question_type == 'boolean' %}
+            <div style="display:flex;gap:32px;align-items:center;">
+                <div style="text-align:center;">
+                    <div style="font-size:36px;font-weight:800;color:var(--success);">{{ stat.yes }}</div>
+                    <div style="font-size:12px;color:var(--text-tertiary);">Yes ({{ stat.yes_pct }}%)</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:36px;font-weight:800;color:var(--danger);">{{ stat.no }}</div>
+                    <div style="font-size:12px;color:var(--text-tertiary);">No</div>
+                </div>
+                <div style="flex:1;height:16px;background:var(--danger-light);border-radius:8px;overflow:hidden;">
+                    <div style="height:100%;background:var(--success);width:{{ stat.yes_pct }}%;border-radius:8px;"></div>
+                </div>
+            </div>
+        {% else %}
+            <div style="color:var(--text-tertiary);font-size:13px;font-style:italic;">
+                Text responses — see individual submissions below.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+</div>
+
+<!-- Individual responses -->
+<div class="card">
+    <div class="card-header">
+        <h3>Individual Responses <span style="color:var(--text-tertiary);font-size:13px;font-weight:500;">({{ total }})</span></h3>
+    </div>
+    <div class="card-body" style="padding:0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Participant</th>
+                    <th>Submitted</th>
+                    {% for stat in q_stats %}
+                    <th style="max-width:120px;">Q{{ forloop.counter }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for resp in responses %}
+            <tr>
+                <td>
+                    <div style="font-weight:600;font-size:13px;">{{ resp.user.get_full_name }}</div>
+                    <div style="font-size:11px;color:var(--text-tertiary);">{{ resp.user.email }}</div>
+                </td>
+                <td style="font-size:12px;color:var(--text-secondary);">{{ resp.submitted_at|date:"M d, H:i" }}</td>
+                {% for stat in q_stats %}
+                <td style="font-size:12px;">
+                    {% for ans in resp.answers.all %}
+                        {% if ans.question.id == stat.q.id %}
+                            {% if stat.q.question_type == 'rating' %}
+                                <span style="color:#f59e0b;font-weight:700;">{{ ans.rating_value }}★</span>
+                            {% elif stat.q.question_type == 'boolean' %}
+                                {% if ans.boolean_value %}<span class="badge badge-success">Yes</span>
+                                {% else %}<span class="badge badge-danger">No</span>{% endif %}
+                            {% else %}
+                                <span style="color:var(--text-secondary);">{{ ans.text_value|truncatechars:40 }}</span>
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

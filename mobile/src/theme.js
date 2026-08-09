@@ -39,6 +39,7 @@ export const COLORS = {
   textMuted:     '#cbd5e1',
   border:        '#e2e8f0',
   borderLight:   '#f1f5f9',
+  textblack:     '#000',
 };
 
 export const FONT = {
@@ -96,7 +97,7 @@ export const TOP = Platform.OS === 'ios' ? 54 : 44;
 const NGROK      = 'https://bauble-aftermost-buffalo.ngrok-free.dev/api/v1';
 const CODESPACES = 'https://cautious-eureka-jj56xxggr9vpcq9qj-8000.app.github.dev/api/v1';
 
-export const API_URL  = Platform.OS === 'web' ? CODESPACES : NGROK;
+export const API_URL  = NGROK; // both web + native use ngrok
 export const API_ROOT = API_URL.replace(/\/api\/v1$/, '');
 
 const BASE_HEADERS = {
@@ -105,9 +106,7 @@ const BASE_HEADERS = {
   'x-public-origin': API_ROOT,
 };
 
-export const API_HEADERS = Platform.OS === 'web'
-  ? BASE_HEADERS
-  : { ...BASE_HEADERS, 'ngrok-skip-browser-warning': 'true' };
+export const API_HEADERS = { ...BASE_HEADERS, 'ngrok-skip-browser-warning': 'true' };
 
 
 // Fix media URLs — replaces localhost with the correct public base

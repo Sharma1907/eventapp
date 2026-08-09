@@ -1,420 +1,718 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import {
   View, Text, StyleSheet, Platform, ScrollView, TextInput,
-  TouchableOpacity, Image, RefreshControl, ActivityIndicator,
+  TouchableOpacity, Image, RefreshControl,
+  Animated, Easing, Pressable, LayoutAnimation, UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONT, SPACE, RADIUS, API_URL, API_HEADERS, fixMediaUrl } from '../theme';
-import { GradientAvatar, FadeIn } from '../components';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  COLORS, FONT, SPACE, RADIUS, SHADOW,
+  API_URL, API_HEADERS, fixMediaUrl, W, H,
+} from '../theme';
+import { GradientAvatar } from '../components';
+import { getCached, setCache } from '../cache';
 import ContactCardModal from './ContactCardModal';
 import SpeakerRequestModal from './SpeakerRequestModal';
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 const TABS = ['Attendees', 'Speakers'];
+const authH = t => ({ ...API_HEADERS, Authorization: `Bearer ${t?.access}` });
 
-export default function NetworkScreen({ tokens, user, onOpenChat, pendingCount, onOpenRequests }) {
-  const [activeTab,  setActiveTab]  = useState('Attendees');
-  const [attendees,  setAttendees]  = useState([]);
-  const [speakers,   setSpeakers]   = useState([]);
-  const [interests,  setInterests]  = useState([]);
-  const [search,     setSearch]     = useState('');
-  const [activeTag,  setActiveTag]  = useState('');
-  const [loading,    setLoading]    = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ANIMATED PRIMITIVES
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-  // Card modals
-  const [cardTarget,    setCardTarget]    = useState(null);  // user object for ContactCardModal
-  const [speakerTarget, setSpeakerTarget] = useState(null);  // user object for SpeakerRequestModal
+function WaveIn({ children, index }) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(t, {
+      toValue: 1, duration: 600,
+      delay: Math.min(index * 120, 700),
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      useNativeDriver: true,
+    }).start();
+  }, []);
+  return (
+    <Animated.View style={{
+      opacity: t,
+      transform: [
+        { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) },
+        { scale: t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.9, 1.02, 1] }) },
+      ],
+    }}>
+      {children}
+    </Animated.View>
+  );
+}
 
-  // Connection status cache: { [userId]: { status, conversation_id } }
-  const [connStatus, setConnStatus] = useState({});
+function BreathingBorder({ color = COLORS.success, size = 68 }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(a, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(a, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+  }, []);
+  return (
+    <Animated.View style={{
+      position: 'absolute', width: size, height: size, borderRadius: size / 2,
+      borderWidth: 2.5, borderColor: color,
+      opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.7] }),
+      transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] }) }],
+    }} />
+  );
+}
 
-  // Load all connection statuses for visible users in bulk
-  const loadStatuses = useCallback(async (userIds) => {
-    if (!userIds || userIds.length === 0) return;
-    const results = await Promise.allSettled(
-      userIds.map(id =>
-        fetch(`${API_URL}/chat/check/${id}/`, {
-          headers: { ...API_HEADERS, Authorization: `Bearer ${tokens?.access}` },
-        }).then(r => r.json()).then(d => ({ id, data: d }))
-      )
-    );
-    const updates = {};
-    results.forEach(r => {
-      if (r.status === 'fulfilled' && r.value?.data) {
-        updates[r.value.id] = r.value.data;
-      }
-    });
-    setConnStatus(prev => ({ ...prev, ...updates }));
-  }, [tokens]);
-
-  const loadAttendees = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true); else setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (search.trim()) params.append('search', search.trim());
-      if (activeTag)      params.append('interest', activeTag);
-      const res  = await fetch(
-        `${API_URL}/checkins/network/?${params.toString()}`,
-        { headers: { ...API_HEADERS, Authorization: `Bearer ${tokens?.access}` } }
-      );
-      const data = await res.json();
-      const list = (data.attendees || []).filter(a => a.role !== 'speaker').map(a => ({
-        ...a, profile_photo_url: fixMediaUrl(a.profile_photo_url),
-      }));
-      setAttendees(list);
-      if (!activeTag && !search.trim()) setInterests(data.interests || []);
-      // Load connection status for all visible attendees
-      const ids = list.map(a => a.id).filter(id => id !== user?.id);
-      loadStatuses(ids);
-    } catch { /* silent */ }
-    finally { setLoading(false); setRefreshing(false); }
-  }, [tokens, search, activeTag]);
-
-  const loadSpeakers = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true); else setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (search.trim()) params.append('search', search.trim());
-      params.append('role', 'speaker');
-      const res  = await fetch(
-        `${API_URL}/checkins/network/?${params.toString()}`,
-        { headers: { ...API_HEADERS, Authorization: `Bearer ${tokens?.access}` } }
-      );
-      const data = await res.json();
-      const list = (data.attendees || []).filter(a => a.role === 'speaker').map(a => ({
-        ...a, profile_photo_url: fixMediaUrl(a.profile_photo_url),
-      }));
-      setSpeakers(list);
-      const ids = list.map(a => a.id).filter(id => id !== user?.id);
-      loadStatuses(ids);
-    } catch { /* silent */ }
-    finally { setLoading(false); setRefreshing(false); }
-  }, [tokens, search]);
+function FloatingOrbs() {
+  const orbs = useRef(
+    Array.from({ length: 4 }, (_, i) => ({
+      x: new Animated.Value(0),
+      y: new Animated.Value(0),
+    }))
+  ).current;
 
   useEffect(() => {
-    if (activeTab === 'Attendees') loadAttendees();
-    else loadSpeakers();
-  }, [activeTab, loadAttendees, loadSpeakers]);
+    orbs.forEach((o, i) => {
+      const dur = 3000 + i * 800;
+      Animated.loop(Animated.parallel([
+        Animated.sequence([
+          Animated.timing(o.x, { toValue: 1, duration: dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(o.x, { toValue: 0, duration: dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(o.y, { toValue: 1, duration: dur * 1.2, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(o.y, { toValue: 0, duration: dur * 1.2, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        ]),
+      ])).start();
+    });
+  }, []);
 
-  const toggleTag = (tag) => setActiveTag(prev => prev === tag ? '' : tag);
-
-  const checkConnection = async (userId) => {
-    if (connStatus[userId]) return connStatus[userId];
-    try {
-      const res  = await fetch(`${API_URL}/chat/check/${userId}/`, {
-        headers: { ...API_HEADERS, Authorization: `Bearer ${tokens?.access}` },
-      });
-      const data = await res.json();
-      setConnStatus(prev => ({ ...prev, [userId]: data }));
-      return data;
-    } catch { return { status: 'none' }; }
-  };
-
-  const handleAttendeePress = (attendee) => {
-    const cached = connStatus[attendee.id];
-    if (cached) {
-      if (cached.status === 'connected') {
-        onOpenChat && onOpenChat(cached.conversation_id);
-        return;
-      }
-      if (cached.status === 'pending_sent') return;
-    }
-    // Close any open modal first, then open for new target
-    setCardTarget(null);
-    setTimeout(() => setCardTarget(attendee), 50);
-    checkConnection(attendee.id);
-  };
-
-  const handleSpeakerPress = (speaker) => {
-    const cached = connStatus[speaker.id];
-    if (cached) {
-      if (cached.status === 'connected') {
-        onOpenChat && onOpenChat(cached.conversation_id);
-        return;
-      }
-      if (cached.status === 'pending_sent') return;
-    }
-    setSpeakerTarget(speaker);
-    checkConnection(speaker.id);
-  };
-
-  const getActionInfo = (userId) => {
-    const st = connStatus[userId];
-    if (!st || st.status === 'none') return null;
-    if (st.status === 'connected')        return { label: 'Chat',    icon: 'chatbubble-outline',  color: COLORS.success, status: 'connected' };
-    if (st.status === 'pending_sent')     return { label: 'Pending', icon: 'time-outline',        color: COLORS.accent,  status: 'pending_sent' };
-    if (st.status === 'pending_received') return { label: 'Respond', icon: 'mail-outline',        color: COLORS.brand,   status: 'pending_received' };
-    return null;
-  };
-
-  const currentList = activeTab === 'Attendees' ? attendees : speakers;
-
-  // My research interests for mutual highlight
-  const myInterests = new Set(
-    (user?.research_interests || '').split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
-  );
+  const configs = [
+    { size: 80, color: 'rgba(99,102,241,0.08)', left: -20, top: 10 },
+    { size: 60, color: 'rgba(59,130,246,0.06)', right: 30, top: 50 },
+    { size: 100, color: 'rgba(139,92,246,0.05)', right: -30, top: -10 },
+    { size: 50, color: 'rgba(14,165,233,0.07)', left: 60, top: 60 },
+  ];
 
   return (
-    <View style={s.bg}>
-      {/* Header */}
-      <View style={s.header}>
-        <View style={s.headerTop}>
-          <Text style={s.title}>Network</Text>
-          {/* Requests inbox button */}
-          <TouchableOpacity style={s.reqBtn} onPress={onOpenRequests} activeOpacity={0.8}>
-            <Ionicons name="mail-outline" size={20} color={COLORS.brand} />
-            {pendingCount > 0 && (
-              <View style={s.reqDot}>
-                <Text style={s.reqDotText}>{pendingCount > 9 ? '9+' : pendingCount}</Text>
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {orbs.map((o, i) => {
+        const c = configs[i];
+        return (
+          <Animated.View key={i} style={{
+            position: 'absolute', width: c.size, height: c.size,
+            borderRadius: c.size, backgroundColor: c.color,
+            left: c.left, right: c.right, top: c.top,
+            transform: [
+              { translateX: o.x.interpolate({ inputRange: [0, 1], outputRange: [0, 30 + i * 10] }) },
+              { translateY: o.y.interpolate({ inputRange: [0, 1], outputRange: [0, 20 + i * 8] }) },
+            ],
+          }} />
+        );
+      })}
+    </View>
+  );
+}
+
+/* Shimmer skeleton */
+function Shimmer({ w, h, r = 10, style }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(Animated.timing(a, { toValue: 1, duration: 1200, useNativeDriver: true })).start();
+  }, []);
+  return (
+    <Animated.View style={[{
+      width: w, height: h, borderRadius: r, backgroundColor: '#d1d9e6',
+      opacity: a.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.3, 0.65, 0.3] }),
+    }, style]} />
+  );
+}
+
+function SkeletonList() {
+  return (
+    <View style={{ paddingHorizontal: SPACE.xl, paddingTop: SPACE.md }}>
+      {[0, 1, 2, 3, 4].map(i => (
+        <View key={i} style={_s.skelCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Shimmer w={56} h={56} r={18} />
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <Shimmer w="60%" h={14} />
+              <Shimmer w="40%" h={11} style={{ marginTop: 8 }} />
+              <Shimmer w="50%" h={11} style={{ marginTop: 6 }} />
+            </View>
+            <Shimmer w={44} h={44} r={14} />
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6, marginTop: 14 }}>
+            <Shimmer w={70} h={26} r={13} />
+            <Shimmer w={90} h={26} r={13} />
+            <Shimmer w={60} h={26} r={13} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   EXPANDABLE PERSON CARD
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+const PersonCard = memo(({ person, idx, isSelf, isSpeaker, cs, activeTag, onPress, onTag }) => {
+  const [expanded, setExpanded] = useState(false);
+  const press = useRef(new Animated.Value(1)).current;
+  const expandAnim = useRef(new Animated.Value(0)).current;
+  const status = cs?.status;
+  const tags = person.research_interests
+    ? person.research_interests.split(',').map(t => t.trim()).filter(Boolean)
+    : [];
+
+  const onIn = () => Animated.spring(press, { toValue: 0.975, tension: 400, friction: 20, useNativeDriver: true }).start();
+  const onOut = () => Animated.spring(press, { toValue: 1, tension: 250, friction: 14, useNativeDriver: true }).start();
+
+  const toggleExpand = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded(p => !p);
+    Animated.spring(expandAnim, { toValue: expanded ? 0 : 1, tension: 200, friction: 18, useNativeDriver: true }).start();
+  };
+
+  const btn = (() => {
+    if (isSelf) return null;
+    if (status === 'connected') return { l: 'Message', i: 'chatbubble', c: ['#059669', '#10b981'], tc: '#fff' };
+    if (status === 'pending_sent') return { l: 'Requested', i: 'hourglass-outline', c: ['#fbbf24', '#f59e0b'], tc: '#78350f', dis: true };
+    if (status === 'pending_received') return { l: 'Accept / Decline', i: 'mail-unread', c: ['#ef4444', '#dc2626'], tc: '#fff' };
+    if (isSpeaker) return { l: 'Request Discussion', i: 'chatbubble-ellipses', c: ['#7c3aed', '#6d28d9'], tc: '#fff' };
+    return { l: 'Connect', i: 'person-add', c: [COLORS.brand, '#1e40af'], tc: '#fff' };
+  })();
+
+  const statusConfig = {
+    connected: { label: 'Connected', color: '#059669', bg: '#d1fae5', icon: 'checkmark-circle' },
+    pending_sent: { label: 'Requested', color: '#b45309', bg: '#fef3c7', icon: 'time' },
+    pending_received: { label: 'Wants to connect', color: '#dc2626', bg: '#fee2e2', icon: 'mail-unread' },
+  };
+  const st = status && status !== 'none' ? statusConfig[status] : null;
+
+  const chevronRotate = expandAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+
+  return (
+    <WaveIn index={idx}>
+      <Animated.View style={{ transform: [{ scale: press }] }}>
+        <View style={[_s.card, isSpeaker && _s.cardSpeaker]}>
+          {/* Speaker top gradient bar */}
+          {isSpeaker && (
+            <LinearGradient
+              colors={['#7c3aed', '#a78bfa', '#c4b5fd']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={_s.speakerBar}
+            />
+          )}
+
+          {/* Main pressable area */}
+          <Pressable onPressIn={onIn} onPressOut={onOut} onPress={toggleExpand}>
+            {/* Row 1: Avatar + Info + Status */}
+            <View style={_s.cardRow1}>
+              {/* Avatar */}
+              <View style={_s.avatarOuter}>
+                {status === 'connected' && <BreathingBorder color="#10b981" size={64} />}
+                <View style={_s.avatarInner}>
+                  {person.profile_photo_url
+                    ? <Image source={{ uri: person.profile_photo_url }} style={_s.avatar} />
+                    : <GradientAvatar name={person.name} size={56} radius={18} />}
+                </View>
+                {isSpeaker && (
+                  <LinearGradient colors={['#7c3aed', '#a78bfa']} style={_s.micBadge}>
+                    <Ionicons name="mic" size={10} color="#fff" />
+                  </LinearGradient>
+                )}
+                {status === 'connected' && <View style={_s.onlineDot} />}
+              </View>
+
+              {/* Info */}
+              <View style={_s.infoCol}>
+                <View style={_s.nameRow}>
+                  <Text style={_s.name} numberOfLines={1}>{person.name}</Text>
+                  {isSelf && (
+                    <LinearGradient colors={[COLORS.brand, '#1e40af']} style={_s.youPill}>
+                      <Text style={_s.youPillT}>YOU</Text>
+                    </LinearGradient>
+                  )}
+                </View>
+
+                {/* Designation — BOLD & DARK */}
+                {!!person.designation && (
+                  <View style={_s.desigRow}>
+                    <Ionicons name="briefcase" size={12} color="#475569" />
+                    <Text style={_s.desig} numberOfLines={expanded ? 3 : 1}>{person.designation}</Text>
+                  </View>
+                )}
+
+                {/* Affiliation — STRONG CONTRAST */}
+                {!!person.affiliation && (
+                  <View style={_s.affRow}>
+                    <View style={_s.affDot} />
+                    <Text style={_s.aff} numberOfLines={1}>{person.affiliation}</Text>
+                  </View>
+                )}
+
+                {/* Status badge */}
+                {st && (
+                  <View style={[_s.statusBadge, { backgroundColor: st.bg }]}>
+                    <Ionicons name={st.icon} size={11} color={st.color} />
+                    <Text style={[_s.statusBadgeT, { color: st.color }]}>{st.label}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Expand chevron */}
+              <Animated.View style={{ transform: [{ rotate: chevronRotate }] }}>
+                <View style={_s.chevronBtn}>
+                  <Ionicons name="chevron-down" size={18} color="#94a3b8" />
+                </View>
+              </Animated.View>
+            </View>
+
+            {/* Preview tags (collapsed — show 2) */}
+            {!expanded && tags.length > 0 && (
+              <View style={_s.previewTags}>
+                {tags.slice(0, 2).map(t => (
+                  <View key={t} style={_s.previewTag}>
+                    <View style={_s.previewTagDot} />
+                    <Text style={_s.previewTagT} numberOfLines={1}>{t}</Text>
+                  </View>
+                ))}
+                {tags.length > 2 && (
+                  <View style={_s.previewMore}>
+                    <Text style={_s.previewMoreT}>+{tags.length - 2} more</Text>
+                  </View>
+                )}
               </View>
             )}
-          </TouchableOpacity>
-        </View>
-        <Text style={s.sub}>Connect with conference participants</Text>
-      </View>
+          </Pressable>
 
-      {/* Tab toggle */}
-      <View style={s.tabRow}>
-        {TABS.map(tab => (
-          <TouchableOpacity
-            key={tab}
-            style={[s.tab, activeTab === tab && s.tabActive]}
-            onPress={() => { setActiveTab(tab); setSearch(''); setActiveTag(''); }}
-            activeOpacity={0.75}
-          >
-            <Ionicons
-              name={tab === 'Attendees' ? 'people-outline' : 'mic-outline'}
-              size={14}
-              color={activeTab === tab ? '#fff' : COLORS.textSec}
-            />
-            <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>{tab}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+          {/* ─── EXPANDED SECTION ─────────────────────────────────── */}
+          {expanded && (
+            <View style={_s.expandedSection}>
+              {/* Divider */}
+              <View style={_s.expandDivider} />
 
-      {/* Search */}
-      <View style={s.searchWrap}>
-        <View style={s.searchBox}>
-          <Ionicons name="search-outline" size={18} color={COLORS.textTer} />
-          <TextInput
-            style={s.searchInput}
-            placeholder={`Search ${activeTab.toLowerCase()}...`}
-            placeholderTextColor={COLORS.textTer}
-            value={search}
-            onChangeText={setSearch}
-            onSubmitEditing={() => activeTab === 'Attendees' ? loadAttendees() : loadSpeakers()}
-            returnKeyType="search"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={18} color={COLORS.textTer} />
-            </TouchableOpacity>
+              {/* Full bio / designation when expanded */}
+              {!!person.designation && (
+                <View style={_s.expandBlock}>
+                  <View style={_s.expandLabel}>
+                    <Ionicons name="briefcase" size={13} color={COLORS.brand} />
+                    <Text style={_s.expandLabelT}>Role</Text>
+                  </View>
+                  <Text style={_s.expandValue}>{person.designation}</Text>
+                </View>
+              )}
+
+              {!!person.affiliation && (
+                <View style={_s.expandBlock}>
+                  <View style={_s.expandLabel}>
+                    <Ionicons name="business" size={13} color={COLORS.brand} />
+                    <Text style={_s.expandLabelT}>Organization</Text>
+                  </View>
+                  <Text style={_s.expandValue}>{person.affiliation}</Text>
+                </View>
+              )}
+
+              {/* ALL Research Interests — fully visible */}
+              {tags.length > 0 && (
+                <View style={_s.expandBlock}>
+                  <View style={_s.expandLabel}>
+                    <Ionicons name="flask" size={13} color={COLORS.brand} />
+                    <Text style={_s.expandLabelT}>Research Interests</Text>
+                    <View style={_s.tagCountPill}>
+                      <Text style={_s.tagCountT}>{tags.length}</Text>
+                    </View>
+                  </View>
+                  <View style={_s.allTags}>
+                    {tags.map(t => (
+                      <TouchableOpacity
+                        key={t}
+                        style={[_s.fullTag, activeTag === t && _s.fullTagActive]}
+                        onPress={() => onTag?.(t)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[_s.fullTagDot, activeTag === t && _s.fullTagDotActive]} />
+                        <Text style={[_s.fullTagT, activeTag === t && _s.fullTagTActive]}>{t}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Action button */}
+              {btn && (
+                <TouchableOpacity
+                  onPress={() => onPress?.(person)}
+                  activeOpacity={0.85}
+                  disabled={btn.dis}
+                  style={_s.actionWrap}
+                >
+                  <LinearGradient
+                    colors={btn.c}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={[_s.actionBtn, btn.dis && { opacity: 0.7 }]}
+                  >
+                    <Ionicons name={btn.i} size={17} color={btn.tc} />
+                    <Text style={[_s.actionBtnT, { color: btn.tc }]}>{btn.l}</Text>
+                    {!btn.dis && <Ionicons name="arrow-forward" size={16} color={btn.tc} style={{ marginLeft: 'auto', opacity: 0.6 }} />}
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+            </View>
           )}
         </View>
-      </View>
+      </Animated.View>
+    </WaveIn>
+  );
+});
 
-      {/* Interest filter chips — attendees only */}
-      {activeTab === 'Attendees' && interests.length > 0 && (
-        <ScrollView
-          horizontal showsHorizontalScrollIndicator={false}
-          style={s.chipsScroll}
-          contentContainerStyle={s.chipsContainer}
-        >
-          {interests.map(tag => (
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   EMPTY STATE
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+function EmptyState({ tab, hasFilter, onClear }) {
+  const float = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(Animated.sequence([
+      Animated.timing(float, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      Animated.timing(float, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    ])).start();
+  }, []);
+  return (
+    <View style={_s.emptyWrap}>
+      <Animated.View style={{ transform: [{ translateY: float.interpolate({ inputRange: [0, 1], outputRange: [0, -16] }) }] }}>
+        <LinearGradient colors={['#dbeafe', '#ede9fe']} style={_s.emptyOrb}>
+          <Ionicons name={tab === 'Speakers' ? 'mic-off' : 'people'} size={48} color={COLORS.brand} />
+        </LinearGradient>
+      </Animated.View>
+      <Text style={_s.emptyH}>No {tab.toLowerCase()} found</Text>
+      <Text style={_s.emptyP}>
+        {hasFilter ? 'Try different keywords or remove filters.' : `${tab} appear here after checking in.`}
+      </Text>
+      {hasFilter && (
+        <TouchableOpacity onPress={onClear} activeOpacity={0.8}>
+          <LinearGradient colors={[COLORS.brand, '#1e40af']} style={_s.emptyBtn}>
+            <Ionicons name="refresh" size={16} color="#fff" />
+            <Text style={_s.emptyBtnT}>Clear Filters</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   MAIN SCREEN
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+export default function NetworkScreen({ tokens, user, onOpenChat, pendingCount, onOpenRequests }) {
+  const [activeTab, setActiveTab] = useState('Attendees');
+  const [attendees, setAttendees] = useState([]);
+  const [speakers, setSpeakers]   = useState([]);
+  const [interests, setInterests] = useState([]);
+  const [search, setSearch]       = useState('');
+  const [activeTag, setActiveTag] = useState('');
+  const [loading, setLoading]     = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [connStatus, setConnStatus] = useState({});
+  const [cardTarget, setCardTarget] = useState(null);
+  const [speakerTarget, setSpeakerTarget] = useState(null);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const searchTimer = useRef(null);
+  const initial = useRef({ a: false, s: false });
+
+  const heroFade = useRef(new Animated.Value(0)).current;
+  const searchHeight = useRef(new Animated.Value(0)).current;
+  const tabSlide = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(heroFade, { toValue: 1, duration: 800, easing: Easing.out(Easing.exp), useNativeDriver: true }).start();
+  }, []);
+
+  useEffect(() => {
+    Animated.spring(tabSlide, { toValue: activeTab === 'Attendees' ? 0 : 1, tension: 300, friction: 25, useNativeDriver: true }).start();
+  }, [activeTab]);
+
+  const toggleSearch = () => {
+    const show = !searchVisible;
+    setSearchVisible(show);
+    Animated.spring(searchHeight, { toValue: show ? 1 : 0, tension: 200, friction: 22, useNativeDriver: false }).start();
+    if (!show && search) { setSearch(''); setTimeout(() => activeTab === 'Attendees' ? loadAttendees() : loadSpeakers(), 0); }
+  };
+
+  // ── data loading ─────────────────────────────────────────────────
+  const loadStatuses = useCallback(async (ids) => {
+    if (!ids?.length) return;
+    try {
+      const r = await fetch(`${API_URL}/chat/check/bulk/`, { method: 'POST', headers: authH(tokens), body: JSON.stringify({ user_ids: ids }) });
+      const d = await r.json();
+      if (d.statuses) setConnStatus(p => ({ ...p, ...d.statuses }));
+    } catch {}
+  }, [tokens]);
+
+  const loadAttendees = useCallback(async (ref = false) => {
+    const isS = !!(search.trim() || activeTag), ck = 'network_attendees';
+    if (!ref && !isS && !initial.current.a) {
+      const c = await getCached(ck);
+      if (c) { setAttendees(c.list); setInterests(c.interests || []); setLoading(false); initial.current.a = true; fetchA(false, ck, isS); return; }
+    }
+    ref ? setRefreshing(true) : (!initial.current.a && setLoading(true));
+    await fetchA(ref, ck, isS); initial.current.a = true;
+  }, [tokens, search, activeTag, loadStatuses]);
+
+  const fetchA = async (ref, ck, isS) => {
+    try {
+      const p = new URLSearchParams();
+      if (search.trim()) p.append('search', search.trim());
+      if (activeTag) p.append('interest', activeTag);
+      const r = await fetch(`${API_URL}/checkins/network/?${p}`, { headers: authH(tokens) });
+      const d = await r.json();
+      const l = (d.attendees || []).filter(a => a.role !== 'speaker').map(a => ({ ...a, profile_photo_url: fixMediaUrl(a.profile_photo_url) }));
+      setAttendees(l);
+      if (!isS) { setInterests(d.interests || []); setCache(ck, { list: l, interests: d.interests || [] }); }
+      loadStatuses(l.map(a => a.id).filter(id => id !== user?.id));
+    } catch {} finally { setLoading(false); setRefreshing(false); }
+  };
+
+  const loadSpeakers = useCallback(async (ref = false) => {
+    const isS = !!search.trim(), ck = 'network_speakers';
+    if (!ref && !isS && !initial.current.s) {
+      const c = await getCached(ck);
+      if (c) { setSpeakers(c); setLoading(false); initial.current.s = true; fetchS(false, ck, isS); return; }
+    }
+    ref ? setRefreshing(true) : (!initial.current.s && setLoading(true));
+    await fetchS(ref, ck, isS); initial.current.s = true;
+  }, [tokens, search, loadStatuses]);
+
+  const fetchS = async (ref, ck, isS) => {
+    try {
+      const p = new URLSearchParams();
+      if (search.trim()) p.append('search', search.trim());
+      p.append('role', 'speaker');
+      const r = await fetch(`${API_URL}/checkins/network/?${p}`, { headers: authH(tokens) });
+      const d = await r.json();
+      const l = (d.attendees || []).filter(a => a.role === 'speaker').map(a => ({ ...a, profile_photo_url: fixMediaUrl(a.profile_photo_url) }));
+      setSpeakers(l);
+      if (!isS) setCache(ck, l);
+      loadStatuses(l.map(a => a.id).filter(id => id !== user?.id));
+    } catch {} finally { setLoading(false); setRefreshing(false); }
+  };
+
+  useEffect(() => { activeTab === 'Attendees' ? loadAttendees() : loadSpeakers(); }, [activeTab]);
+
+  const onSearchInput = v => {
+    setSearch(v);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => activeTab === 'Attendees' ? loadAttendees() : loadSpeakers(), 400);
+  };
+  const clearAll = () => { setSearch(''); setActiveTag(''); setTimeout(() => activeTab === 'Attendees' ? loadAttendees() : loadSpeakers(), 0); };
+  const toggleTag = t => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setActiveTag(p => p === t ? '' : t); setTimeout(() => loadAttendees(), 0); };
+  const switchTab = t => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setActiveTab(t); setSearch(''); setActiveTag(''); };
+
+  const handlePress = p => {
+    const c = connStatus[p.id];
+    if (c?.status === 'connected' && c?.conversation_id) { onOpenChat?.(c.conversation_id); return; }
+    if (c?.status === 'pending_sent') return;
+    if (c?.status === 'pending_received') { onOpenRequests?.(); return; }
+    if (activeTab === 'Speakers') setSpeakerTarget(p);
+    else { setCardTarget(null); setTimeout(() => setCardTarget(p), 50); }
+  };
+
+  const list = activeTab === 'Attendees' ? attendees : speakers;
+  const hasFilter = !!(search.trim() || activeTag);
+  const sH = searchHeight.interpolate({ inputRange: [0, 1], outputRange: [0, 58] });
+  const sO = searchHeight.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 0, 1] });
+  const tabW = (W - SPACE.xl * 2 - 8) / 2;
+
+  return (
+    <View style={_s.root}>
+      {/* ━━ HEADER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <LinearGradient
+        colors={['#050d1f', '#0b1a42', '#0d2466']}
+        start={{ x: 0, y: 0 }} end={{ x: 0.8, y: 1 }}
+        style={_s.header}
+      >
+        <FloatingOrbs />
+
+        <Animated.View style={{ opacity: heroFade, transform: [{ translateY: heroFade.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }] }}>
+          {/* Top row */}
+          <View style={_s.headerRow}>
+            <View style={_s.headerLeft}>
+              <View style={_s.titleWrap}>
+                <View style={_s.titleIcon}>
+                  <Ionicons name="globe" size={18} color="#fff" />
+                </View>
+                <Text style={_s.headerTitle}>Network</Text>
+              </View>
+              <Text style={_s.headerSub}>Explore & Connect</Text>
+            </View>
+
+            <View style={_s.headerBtns}>
+              <TouchableOpacity style={_s.hBtn} onPress={toggleSearch} activeOpacity={0.7}>
+                <Ionicons name={searchVisible ? 'close' : 'search'} size={19} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity style={_s.hBtn} onPress={onOpenRequests} activeOpacity={0.7}>
+                <Ionicons name="chatbubbles" size={19} color="#fff" />
+                {pendingCount > 0 && (
+                  <View style={_s.hBadge}>
+                    <Text style={_s.hBadgeT}>{pendingCount > 9 ? '9+' : pendingCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Animated search */}
+          <Animated.View style={{ height: sH, opacity: sO, overflow: 'hidden', marginTop: SPACE.sm }}>
+            <View style={_s.searchBox}>
+              <Ionicons name="search" size={17} color="#94a3b8" />
+              <TextInput
+                style={_s.searchInput}
+                placeholder={`Search ${activeTab.toLowerCase()} by name, role, institution...`}
+                placeholderTextColor="#64748b"
+                value={search}
+                onChangeText={onSearchInput}
+                returnKeyType="search"
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => { setSearch(''); activeTab === 'Attendees' ? loadAttendees() : loadSpeakers(); }}>
+                  <View style={_s.clearX}><Ionicons name="close" size={14} color="#64748b" /></View>
+                </TouchableOpacity>
+              )}
+            </View>
+          </Animated.View>
+        </Animated.View>
+      </LinearGradient>
+
+      {/* ━━ BODY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <View style={_s.body}>
+        {/* Tab bar with animated slider */}
+        <View style={_s.tabOuter}>
+          <View style={_s.tabBar}>
+            <Animated.View style={[_s.tabSlider, { width: tabW, transform: [{ translateX: Animated.multiply(tabSlide, tabW) }] }]}>
+              <LinearGradient colors={[COLORS.brand, '#1e40af']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={_s.tabSliderGrad} />
+            </Animated.View>
+            {TABS.map(tab => (
+              <TouchableOpacity key={tab} onPress={() => switchTab(tab)} activeOpacity={0.8} style={[_s.tabItem, { width: tabW }]}>
+                <Ionicons
+                  name={tab === 'Attendees' ? (activeTab === tab ? 'people' : 'people-outline') : (activeTab === tab ? 'mic' : 'mic-outline')}
+                  size={16} color={activeTab === tab ? '#fff' : '#64748b'}
+                />
+                <Text style={[_s.tabT, activeTab === tab && _s.tabTA]}>{tab}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Interest filter chips */}
+        {activeTab === 'Attendees' && interests.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={_s.chipScroll} style={_s.chipWrap}>
             <TouchableOpacity
-              key={tag}
-              style={[s.chip, activeTag === tag && s.chipActive]}
-              onPress={() => toggleTag(tag)}
+              style={[_s.chip, !activeTag && _s.chipOn]}
+              onPress={() => { setActiveTag(''); setTimeout(() => loadAttendees(), 0); }}
               activeOpacity={0.7}
             >
-              <Text style={[s.chipText, activeTag === tag && s.chipTextActive]}>{tag}</Text>
+              <Ionicons name="apps" size={12} color={!activeTag ? '#fff' : '#64748b'} />
+              <Text style={[_s.chipT, !activeTag && _s.chipTOn]}>All</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
+            {interests.map(tag => (
+              <TouchableOpacity
+                key={tag}
+                style={[_s.chip, activeTag === tag && _s.chipOn]}
+                onPress={() => toggleTag(tag)}
+                activeOpacity={0.7}
+              >
+                {activeTag === tag && <Ionicons name="checkmark-circle" size={13} color="#fff" />}
+                <Text style={[_s.chipT, activeTag === tag && _s.chipTOn]}>{tag}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
-      {/* Count */}
-      {!loading && (
-        <View style={s.countRow}>
-          <Text style={s.countText}>
-            {currentList.length} {activeTab.toLowerCase()} checked in
-          </Text>
-        </View>
-      )}
+        {/* Active filter summary */}
+        {hasFilter && !loading && (
+          <View style={_s.filterRow}>
+            <View style={_s.filterLeft}>
+              <View style={_s.filterDot} />
+              <Text style={_s.filterText}>
+                <Text style={_s.filterBold}>{list.length}</Text> result{list.length !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={clearAll} style={_s.filterClear} activeOpacity={0.7}>
+              <Ionicons name="close-circle" size={15} color="#ef4444" />
+              <Text style={_s.filterClearT}>Clear all</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-      {/* Speaker info note */}
-      {activeTab === 'Speakers' && !loading && speakers.length > 0 && (
-        <View style={s.speakerNote}>
-          <Ionicons name="shield-checkmark-outline" size={13} color={COLORS.purple} />
-          <Text style={s.speakerNoteText}>
-            Speakers review all discussion requests before accepting.
-          </Text>
-        </View>
-      )}
+        {/* Speaker info */}
+        {activeTab === 'Speakers' && !loading && speakers.length > 0 && (
+          <View style={_s.spBanner}>
+            <LinearGradient colors={['#f5f3ff', '#ede9fe']} style={_s.spBannerInner}>
+              <View style={_s.spBannerIconWrap}>
+                <Ionicons name="shield-checkmark" size={16} color="#7c3aed" />
+              </View>
+              <View style={_s.spBannerTextWrap}>
+                <Text style={_s.spBannerTitle}>Moderated Requests</Text>
+                <Text style={_s.spBannerDesc}>Speakers review all discussion requests. Include your topic for faster response.</Text>
+              </View>
+            </LinearGradient>
+          </View>
+        )}
 
-      {/* List */}
-      {loading ? (
-        <View style={s.center}>
-          <ActivityIndicator size="large" color={COLORS.brand} />
-        </View>
-      ) : currentList.length === 0 ? (
-        <View style={s.center}>
-          <Ionicons name="people-outline" size={48} color={COLORS.borderLight} />
-          <Text style={s.emptyTitle}>No {activeTab.toLowerCase()} yet</Text>
-          <Text style={s.emptySub}>
-            {search || activeTag ? 'Try a different search or filter' : 'Check-in is required to appear here'}
-          </Text>
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={s.listContainer}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => activeTab === 'Attendees' ? loadAttendees(true) : loadSpeakers(true)}
-              tintColor={COLORS.brand}
-            />
-          }
-        >
-          {currentList.map((a, i) => {
-            const isSelf   = a.id === user?.id;
-            const actionInfo = getActionInfo(a.id);
+        {/* ── LIST ──────────────────────────────────────────────── */}
+        {loading ? (
+          <SkeletonList />
+        ) : list.length === 0 ? (
+          <EmptyState tab={activeTab} hasFilter={hasFilter} onClear={clearAll} />
+        ) : (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={_s.listContent}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl refreshing={refreshing}
+                onRefresh={() => activeTab === 'Attendees' ? loadAttendees(true) : loadSpeakers(true)}
+                tintColor={COLORS.brand} colors={[COLORS.brand]}
+              />
+            }
+          >
+            {list.map((p, i) => (
+              <PersonCard
+                key={p.id} person={p} idx={i}
+                isSelf={p.id === user?.id}
+                isSpeaker={activeTab === 'Speakers'}
+                cs={connStatus[p.id]}
+                activeTag={activeTag}
+                onPress={handlePress}
+                onTag={activeTab === 'Attendees' ? toggleTag : undefined}
+              />
+            ))}
+            <View style={{ height: 140 }} />
+          </ScrollView>
+        )}
+      </View>
 
-            return (
-              <FadeIn key={a.id} delay={i * 40}>
-                <View style={s.card}>
-                  <View style={s.cardRow}>
-                    {a.profile_photo_url ? (
-                      <Image source={{ uri: a.profile_photo_url }} style={s.photo} />
-                    ) : (
-                      <GradientAvatar name={a.name} size={48} radius={14} />
-                    )}
-                    <View style={s.cardInfo}>
-                      <Text style={s.cardName}>{a.name}{isSelf ? ' (You)' : ''}</Text>
-                      {a.designation ? <Text style={s.cardDesig}>{a.designation}</Text> : null}
-                      {a.affiliation ? (
-                        <View style={s.affRow}>
-                          <Ionicons name="business-outline" size={11} color={COLORS.textTer} />
-                          <Text style={s.cardAff}>{a.affiliation}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-
-                    {/* Action button — only non-self */}
-                    {!isSelf && (
-                      <TouchableOpacity
-                        style={[
-                          s.actionBtn,
-                          activeTab === 'Speakers' && s.actionBtnSpeaker,
-                          actionInfo && { backgroundColor: actionInfo.color + '20', borderColor: actionInfo.color + '40' },
-                        ]}
-                        onPress={() => {
-                          const cs = connStatus[a.id];
-                          if (cs?.status === 'connected' && cs?.conversation_id) {
-                            onOpenChat && onOpenChat(cs.conversation_id);
-                          } else if (cs?.status === 'pending_sent') {
-                            // Already sent — do nothing
-                          } else if (cs?.status === 'pending_received') {
-                            onOpenRequests && onOpenRequests();
-                          } else if (activeTab === 'Speakers') {
-                            handleSpeakerPress(a);
-                          } else {
-                            handleAttendeePress(a);
-                          }
-                        }}
-                        activeOpacity={0.75}
-                      >
-                        <Ionicons
-                          name={
-                            actionInfo ? actionInfo.icon
-                            : activeTab === 'Speakers' ? 'chatbubble-ellipses-outline'
-                            : 'person-add-outline'
-                          }
-                          size={14}
-                          color={
-                            actionInfo ? actionInfo.color
-                            : activeTab === 'Speakers' ? COLORS.purple
-                            : COLORS.brand
-                          }
-                        />
-                        <Text style={[
-                          s.actionBtnText,
-                          activeTab === 'Speakers' && { color: COLORS.purple },
-                          actionInfo && { color: actionInfo.color },
-                        ]}>
-                          {actionInfo ? actionInfo.label
-                            : activeTab === 'Speakers' ? 'Request Chat'
-                            : 'Connect'}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {/* Research interests */}
-                  {a.research_interests ? (
-                    <View style={s.tagsRow}>
-                      <Ionicons name="flask-outline" size={12} color={COLORS.brand} style={{ marginTop: 2 }} />
-                      <View style={s.tags}>
-                        {a.research_interests.split(',').map(t => t.trim()).filter(Boolean).map(t => (
-                          <TouchableOpacity
-                            key={t}
-                            style={[s.tag, activeTag === t && s.tagActive]}
-                            onPress={() => activeTab === 'Attendees' && toggleTag(t)}
-                          >
-                            <Text style={[s.tagText, activeTag === t && s.tagTextActive]}>{t}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
-                </View>
-              </FadeIn>
-            );
-          })}
-          <View style={{ height: 120 }} />
-        </ScrollView>
-      )}
-
-      {/* Contact Card Modal */}
+      {/* ── MODALS ──────────────────────────────────────────────── */}
       <ContactCardModal
-        visible={!!cardTarget}
-        onClose={() => { setCardTarget(null); }}
-        onSent={() => {
-          if (cardTarget) {
-            // Mark as pending_sent in cache immediately
-            setConnStatus(prev => ({
-              ...prev,
-              [cardTarget.id]: { status: 'pending_sent', conversation_id: null, request_id: null },
-            }));
-          }
-          setCardTarget(null);
-        }}
-        sender={user}
-        receiver={cardTarget}
-        tokens={tokens}
+        visible={!!cardTarget} onClose={() => setCardTarget(null)}
+        onSent={() => { if (cardTarget) setConnStatus(p => ({ ...p, [cardTarget.id]: { status: 'pending_sent', conversation_id: null } })); setCardTarget(null); }}
+        sender={user} receiver={cardTarget} tokens={tokens}
       />
-
-      {/* Speaker Request Modal */}
       <SpeakerRequestModal
-        visible={!!speakerTarget}
-        onClose={() => setSpeakerTarget(null)}
-        speaker={speakerTarget}
-        tokens={tokens}
-        onSent={(data) => {
+        visible={!!speakerTarget} onClose={() => setSpeakerTarget(null)}
+        speaker={speakerTarget} tokens={tokens}
+        onSent={d => {
           if (speakerTarget) {
-            if (data.already_connected && data.conversation_id) {
-              setConnStatus(prev => ({
-                ...prev,
-                [speakerTarget.id]: { status: 'connected', conversation_id: data.conversation_id },
-              }));
-              setSpeakerTarget(null);
-              onOpenChat && onOpenChat(data.conversation_id);
+            if (d.already_connected && d.conversation_id) {
+              setConnStatus(p => ({ ...p, [speakerTarget.id]: { status: 'connected', conversation_id: d.conversation_id } }));
+              setSpeakerTarget(null); onOpenChat?.(d.conversation_id);
             } else {
-              setConnStatus(prev => ({
-                ...prev,
-                [speakerTarget.id]: { status: 'pending_sent', conversation_id: null },
-              }));
+              setConnStatus(p => ({ ...p, [speakerTarget.id]: { status: 'pending_sent', conversation_id: null } }));
               setSpeakerTarget(null);
             }
           }
@@ -424,126 +722,278 @@ export default function NetworkScreen({ tokens, user, onOpenChat, pendingCount, 
   );
 }
 
-const s = StyleSheet.create({
-  bg: { flex: 1, backgroundColor: '#f0f4f9' },
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   STYLES
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+const _s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#eef2f7' },
 
+  // ── Header ──────────────────────────────────────────────────────────
   header: {
-    paddingTop: Platform.OS === 'ios' ? 58 : 46,
-    paddingBottom: SPACE.sm,
+    paddingTop: Platform.OS === 'ios' ? 58 : 44,
     paddingHorizontal: SPACE.xl,
-    backgroundColor: '#f0f4f9',
+    paddingBottom: SPACE.xl,
+    overflow: 'hidden',
   },
-  headerTop: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  title: { fontSize: 28, fontWeight: '900', color: COLORS.brand, letterSpacing: -0.5 },
-  sub:   { fontSize: FONT.xs, color: COLORS.textTer, marginTop: 3 },
-
-  reqBtn: {
-    width: 40, height: 40, borderRadius: 13,
-    backgroundColor: COLORS.brandLight,
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  headerLeft: { flex: 1 },
+  titleWrap: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  titleIcon: {
+    width: 34, height: 34, borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: { fontSize: 30, fontWeight: '900', color: '#fff', letterSpacing: -0.8 },
+  headerSub: { fontSize: 13, color: '#fff', marginTop: 6, marginLeft: 44, fontWeight: '500' },
+  headerBtns: { flexDirection: 'row', gap: 10, marginTop: 2 },
+  hBtn: {
+    width: 44, height: 44, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  hBadge: {
+    position: 'absolute', top: -5, right: -5,
+    minWidth: 21, height: 21, borderRadius: 11,
+    backgroundColor: '#ef4444',
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4, borderWidth: 2.5, borderColor: '#0b1a42',
+  },
+  hBadgeT: { fontSize: 10, fontWeight: '800', color: '#fff' },
+
+  // Search
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff', borderRadius: 14,
+    paddingHorizontal: 14, height: 48,
+    ...SHADOW.md,
+  },
+  searchInput: { flex: 1, fontSize: 14, color: '#0f172a', fontWeight: '500' },
+  clearX: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+
+  // ── Body ────────────────────────────────────────────────────────────
+  body: {
+    flex: 1, marginTop: -18,
+    borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    backgroundColor: '#eef2f7',
+    overflow: 'hidden',
+  },
+
+  // Tabs
+  tabOuter: { paddingHorizontal: SPACE.xl, paddingTop: 22, paddingBottom: SPACE.sm },
+  tabBar: {
+    flexDirection: 'row', backgroundColor: '#fff',
+    borderRadius: 16, padding: 4,
+    ...SHADOW.md, borderWidth: 1, borderColor: '#e2e8f0',
     position: 'relative',
   },
-  reqDot: {
-    position: 'absolute', top: -4, right: -4,
-    minWidth: 18, height: 18, borderRadius: 9,
-    backgroundColor: COLORS.error,
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 3, borderWidth: 2, borderColor: '#f0f4f9',
-  },
-  reqDotText: { fontSize: 9, fontWeight: FONT.w8, color: '#fff' },
+  tabSlider: { position: 'absolute', top: 4, left: 4, bottom: 4, borderRadius: 12, overflow: 'hidden' },
+  tabSliderGrad: { flex: 1, borderRadius: 12 },
+  tabItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 13, zIndex: 1 },
+  tabT: { fontSize: 14, fontWeight: '700', color: '#64748b' },
+  tabTA: { color: '#fff', fontWeight: '800' },
 
-  tabRow: {
-    flexDirection: 'row', gap: SPACE.sm,
+  // Chips
+  chipWrap: { 
+    marginBottom: SPACE.sm,
+    paddingVertical: 6,   // gives room for shadow/border top & bottom
+  },
+  chipScroll: { 
+    paddingHorizontal: SPACE.xl, 
+    gap: 8, 
+    flexDirection: 'row', 
+    alignItems: 'center',
+    paddingVertical: 4,   // extra breathing room
+  },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#fff', borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 9,
+    borderWidth: 1.5, borderColor: '#e2e8f0',
+    ...SHADOW.sm, height: 40, // add chip height
+  },
+  chipOn: { backgroundColor: COLORS.brand, borderColor: COLORS.brand, ...SHADOW.brand },
+  chipT: { fontSize: 12, fontWeight: '600', color: '#475569' },
+  chipTOn: { color: '#fff', fontWeight: '700' },
+
+  // Filter bar
+  filterRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: SPACE.xl, marginBottom: SPACE.sm,
   },
-  tab: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACE.xs,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderRadius: RADIUS.full, paddingHorizontal: SPACE.lg,
-    paddingVertical: SPACE.sm,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
+  filterLeft: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  filterDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.success },
+  filterText: { fontSize: 13, color: '#475569', fontWeight: '500' },
+  filterBold: { fontWeight: '900', color: '#0f172a' },
+  filterClear: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#fee2e2', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
+  filterClearT: { fontSize: 12, fontWeight: '700', color: '#ef4444' },
+
+  // Speaker banner
+  spBanner: { marginHorizontal: SPACE.xl, marginBottom: SPACE.md, borderRadius: 16, overflow: 'hidden' },
+  spBannerInner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#ddd6fe',
   },
-  tabActive: { backgroundColor: COLORS.brand, borderColor: COLORS.brand },
-  tabText:   { fontSize: FONT.sm, fontWeight: FONT.w6, color: COLORS.textSec },
-  tabTextActive: { color: '#fff' },
-
-  searchWrap: { paddingHorizontal: SPACE.xl, paddingVertical: SPACE.sm },
-  searchBox: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
-    backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 16,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
-    paddingHorizontal: SPACE.lg, height: 44,
+  spBannerIconWrap: {
+    width: 36, height: 36, borderRadius: 12,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+    ...SHADOW.sm,
   },
-  searchInput: { flex: 1, fontSize: FONT.sm, color: COLORS.text },
+  spBannerTextWrap: { flex: 1 },
+  spBannerTitle: { fontSize: 13, fontWeight: '800', color: '#5b21b6', marginBottom: 3 },
+  spBannerDesc: { fontSize: 12, color: '#6d28d9', lineHeight: 18, fontWeight: '500' },
 
-  chipsScroll:    { maxHeight: 44 },
-  chipsContainer: { paddingHorizontal: SPACE.xl, gap: SPACE.sm, flexDirection: 'row', alignItems: 'center' },
-  chip: {
-    backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: RADIUS.full,
-    paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs + 2,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
-  },
-  chipActive:     { backgroundColor: COLORS.brand, borderColor: COLORS.brand },
-  chipText:       { fontSize: FONT.xs, fontWeight: FONT.w6, color: COLORS.textSec },
-  chipTextActive: { color: '#fff' },
+  // List
+  listContent: { paddingHorizontal: SPACE.xl, paddingTop: SPACE.xs },
 
-  countRow:  { paddingHorizontal: SPACE.xl, paddingVertical: SPACE.xs },
-  countText: { fontSize: FONT.xs, color: COLORS.textTer, fontWeight: FONT.w6 },
-
-  speakerNote: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACE.xs,
-    marginHorizontal: SPACE.xl, marginBottom: SPACE.sm,
-    backgroundColor: COLORS.purpleLight,
-    paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs,
-    borderRadius: RADIUS.full,
-    alignSelf: 'flex-start',
-  },
-  speakerNoteText: { fontSize: FONT.xs, color: COLORS.purple },
-
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: SPACE.sm, padding: 32 },
-  emptyTitle: { fontSize: FONT.md, fontWeight: '700', color: COLORS.textSec },
-  emptySub:   { fontSize: FONT.sm, color: COLORS.textTer, textAlign: 'center' },
-
-  listContainer: { paddingHorizontal: SPACE.xl },
-
+  // ── CARD ────────────────────────────────────────────────────────────
   card: {
-    backgroundColor: 'rgba(255,255,255,0.72)', borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)',
-    padding: SPACE.lg, marginBottom: SPACE.md,
-    ...Platform.select({
-      ios: { shadowColor: '#002182', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8 },
-      android: { elevation: 0 },
-    }),
+    backgroundColor: '#fff', borderRadius: 22,
+    borderWidth: 1, borderColor: '#e2e8f0',
+    marginBottom: 14, overflow: 'hidden',
+    ...SHADOW.md,
   },
-  cardRow:   { flexDirection: 'row', alignItems: 'center' },
-  photo:     { width: 48, height: 48, borderRadius: 14 },
-  cardInfo:  { flex: 1, marginLeft: SPACE.md },
-  cardName:  { fontSize: FONT.sm, fontWeight: '700', color: COLORS.text },
-  cardDesig: { fontSize: FONT.xs, color: COLORS.textSec, marginTop: 1 },
-  affRow:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  cardAff:   { fontSize: FONT.xs, color: COLORS.textTer },
+  cardSpeaker: { borderColor: '#ddd6fe' },
+  speakerBar: { height: 4 },
 
-  actionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
+  cardRow1: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 16, paddingBottom: 10,
+  },
+
+  // Avatar
+  avatarOuter: { width: 68, height: 68, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  avatarInner: {},
+  avatar: { width: 56, height: 56, borderRadius: 18, borderWidth: 2, borderColor: '#e2e8f0' },
+  micBadge: {
+    position: 'absolute', bottom: 2, right: 2,
+    width: 22, height: 22, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2.5, borderColor: '#fff',
+  },
+  onlineDot: {
+    position: 'absolute', top: 4, right: 4,
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: '#10b981', borderWidth: 2.5, borderColor: '#fff',
+  },
+
+  // Info
+  infoCol: { flex: 1, gap: 4 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  name: { fontSize: 17, fontWeight: '800', color: '#0f172a', letterSpacing: -0.3 },
+  youPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  youPillT: { fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 1 },
+
+  // DESIGNATION — HIGH CONTRAST
+  desigRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  desig: {
+    fontSize: 14, fontWeight: '700',
+    color: '#1e293b', // near-black for maximum readability
+    flex: 1,
+  },
+
+  // AFFILIATION — HIGH CONTRAST
+  affRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  affDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.brand },
+  aff: {
+    fontSize: 13, fontWeight: '700',
+    color: '#334155', // dark slate — easily readable
+    flex: 1,
+  },
+
+  // Status badge
+  statusBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+    marginTop: 4,
+  },
+  statusBadgeT: { fontSize: 11, fontWeight: '700' },
+
+  // Chevron
+  chevronBtn: {
+    width: 36, height: 36, borderRadius: 12,
+    backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center',
+    marginLeft: 8,
+  },
+
+  // Preview tags (collapsed)
+  previewTags: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 16, paddingBottom: 14,
+    flexWrap: 'wrap',
+  },
+  previewTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#f0f4ff', borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: '#dbe4ff',
+  },
+  previewTagDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: COLORS.brand },
+  previewTagT: { fontSize: 11, fontWeight: '600', color: '#3b53c4' },
+  previewMore: {
+    backgroundColor: '#f1f5f9', borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  previewMoreT: { fontSize: 11, fontWeight: '700', color: '#64748b' },
+
+  // ── EXPANDED ────────────────────────────────────────────────────────
+  expandedSection: { paddingHorizontal: 16, paddingBottom: 16 },
+  expandDivider: { height: 1, backgroundColor: '#f1f5f9', marginBottom: 14 },
+
+  expandBlock: { marginBottom: 16 },
+  expandLabel: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  expandLabelT: {
+    fontSize: 11, fontWeight: '800', color: '#64748b',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  tagCountPill: {
+    minWidth: 20, height: 18, borderRadius: 9,
     backgroundColor: COLORS.brandLight,
-    paddingHorizontal: SPACE.sm, paddingVertical: 6,
-    borderRadius: RADIUS.full,
-    borderWidth: 1, borderColor: COLORS.brandLight,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 5,
   },
-  actionBtnSpeaker: {
-    backgroundColor: COLORS.purpleLight,
-    borderColor: COLORS.purpleLight,
+  tagCountT: { fontSize: 10, fontWeight: '800', color: COLORS.brand },
+  expandValue: {
+    fontSize: 15, fontWeight: '600', color: '#1e293b',
+    lineHeight: 22, paddingLeft: 22,
   },
-  actionBtnText: { fontSize: 10, fontWeight: FONT.w7, color: COLORS.brand },
 
-  tagsRow: { flexDirection: 'row', marginTop: SPACE.md, gap: SPACE.sm },
-  tags:    { flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.xs, flex: 1 },
-  tag:     { backgroundColor: COLORS.brandLight, paddingHorizontal: SPACE.sm, paddingVertical: 3, borderRadius: RADIUS.full },
-  tagActive:     { backgroundColor: COLORS.brand },
-  tagMutual:     { backgroundColor: COLORS.accentLight, borderWidth: 1, borderColor: COLORS.accent + '50' },
-  tagText:       { fontSize: 10, fontWeight: '600', color: COLORS.brand },
-  tagTextActive: { color: '#fff' },
-  tagTextMutual: { color: COLORS.accentDark },
+  // All tags — fully visible
+  allTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fullTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#f0f4ff', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderWidth: 1.5, borderColor: '#dbe4ff',
+  },
+  fullTagActive: { backgroundColor: COLORS.brand, borderColor: COLORS.brand },
+  fullTagDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.brand },
+  fullTagDotActive: { backgroundColor: '#fff' },
+  fullTagT: { fontSize: 13, fontWeight: '700', color: '#2d3a8c' },
+  fullTagTActive: { color: '#fff' },
+
+  // Action button
+  actionWrap: { marginTop: 4, borderRadius: 14, overflow: 'hidden' },
+  actionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingVertical: 14, borderRadius: 14,
+    paddingHorizontal: 20,
+  },
+  actionBtnT: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+
+  // ── Skeleton ────────────────────────────────────────────────────────
+  skelCard: {
+    backgroundColor: '#fff', borderRadius: 22, padding: 16,
+    marginBottom: 14, borderWidth: 1, borderColor: '#e2e8f0',
+  },
+
+  // ── Empty ───────────────────────────────────────────────────────────
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+  emptyOrb: { width: 120, height: 120, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  emptyH: { fontSize: 22, fontWeight: '900', color: '#0f172a', marginBottom: 10 },
+  emptyP: { fontSize: 14, color: '#475569', textAlign: 'center', lineHeight: 22, fontWeight: '500', marginBottom: 20 },
+  emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 },
+  emptyBtnT: { fontSize: 14, fontWeight: '700', color: '#fff' },
 });

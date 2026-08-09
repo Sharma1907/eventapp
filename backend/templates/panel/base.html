@@ -336,8 +336,11 @@
             </a>
 
             <div class="menu-label">Content</div>
-            <a href="#" class="menu-item">
-                <i class="fas fa-calendar-alt"></i> Events & Schedule
+            <a href="/panel/schedule/" class="menu-item {% if 'schedule' in request.resolver_match.url_name %}active{% endif %}">
+                <i class="fas fa-calendar-alt"></i> Events &amp; Schedule
+            </a>
+            <a href="/panel/photos/" class="menu-item {% if request.resolver_match.url_name == 'photos_panel' %}active{% endif %}">
+                <i class="fas fa-camera"></i> Photos
             </a>
             <a href="#" class="menu-item">
                 <i class="fas fa-images"></i> Photo Moderation
@@ -354,7 +357,7 @@
             <a href="#" class="menu-item">
                 <i class="fas fa-comments"></i> Q&A Manager
             </a>
-            <a href="#" class="menu-item">
+            <a href="/panel/leaderboard/" class="menu-item {% if request.resolver_match.url_name == 'leaderboard_panel' %}active{% endif %}">
                 <i class="fas fa-trophy"></i> Leaderboard
             </a>
             <a href="/panel/chat/" class="menu-item {% if request.resolver_match.url_name == 'chat_panel' or request.resolver_match.url_name == 'chat_thread' %}active{% endif %}">
@@ -434,5 +437,23 @@
     </main>
 
     {% block scripts %}{% endblock %}
+<script>
+function toggleSubmenu(e, id) {
+    // don't prevent nav — just toggle visibility if already on schedule
+    var el = document.getElementById(id);
+    // always keep visible if we are on a schedule page
+    var isSchedule = window.location.pathname.includes('/schedule');
+    el.style.display = el.style.display === 'none' ? 'block' : '';
+}
+// On page load: keep submenu open if on schedule page
+document.addEventListener('DOMContentLoaded', function() {
+    var el = document.getElementById('scheduleSubmenu');
+    if (window.location.pathname.includes('/schedule')) {
+        el.style.display = 'block';
+    } else {
+        el.style.display = 'none';
+    }
+});
+</script>
 </body>
 </html>

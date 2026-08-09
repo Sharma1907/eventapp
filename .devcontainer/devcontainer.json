@@ -1,25 +1,12 @@
 {
-  "name": "ETD 2026 Dev",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12",
-  "features": {
-    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
-  },
-  "forwardPorts": [8000, 8081, 19000, 19001],
+  "name": "ETD 2026",
+  "forwardPorts": [8000, 8081, 5432, 6379, 9000],
   "portsAttributes": {
-    "8000":  { "label": "Django API" },
-    "8081":  { "label": "Expo Metro" },
-    "19000": { "label": "Expo" },
-    "19001": { "label": "Expo DevTools" }
+    "8000": { "visibility": "public", "label": "Django API" },
+    "8081": { "visibility": "public", "label": "Expo Web" },
+    "5432": { "visibility": "private", "label": "PostgreSQL" },
+    "6379": { "visibility": "private", "label": "Redis" },
+    "9000": { "visibility": "private", "label": "MinIO" }
   },
-  "postCreateCommand": "bash .devcontainer/setup.sh",
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "ms-python.python",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode"
-      ]
-    }
-  }
+  "postStartCommand": "bash /workspaces/eventapp/.devcontainer/autostart.sh"
 }

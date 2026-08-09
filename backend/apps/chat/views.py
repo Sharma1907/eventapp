@@ -617,3 +617,60 @@ def connection_count(request):
         Q(participant_a=request.user) | Q(participant_b=request.user)
     ).count()
     return Response({'count': count})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def bulk_connection_check(request):
+    """
+    POST /api/v1/chat/check/bulk/
+    Body: { "user_ids": ["uuid1", "uuid2", ...] }
+    Returns connection status for all given user IDs in one query.
+    """
+    user_ids = request.data.get('user_ids', [])
+    if not user_ids:
+        return Response({'statuses': {}})
+
+    # ponytail: O(n) queries replaced by 2 bulk queries
+    from .models import ConnectionRequest, Conversation
+
+    # All conversations involving current user
+    from django.db.models import Q
+    convs = Conversation.objects.filter(
+        Q(participant_a=request.user) | Q(participant_b=request.user)
+    ).only('id', 'participant_a_id', 'participant_b_id')
+
+    connected = {}
+    for conv in convs:
+        other_id = str(conv.participant_b_id) if str(conv.participant_a_id) == str(request.user.id) else str(conv.participant_a_id)
+        connected[other_id] = str(conv.id)
+
+    # All pending requests involving current user
+    sent = ConnectionRequest.objects.filter(
+        sender=request.user,
+        status='pending',
+        receiver_id__in=user_ids,
+    ).values_list('receiver_id', flat=True)
+
+    received = ConnectionRequest.objects.filter(
+        receiver=request.user,
+        status='pending',
+        sender_id__in=user_ids,
+    ).values_list('sender_id', flat=True)
+
+    sent_set     = {str(uid) for uid in sent}
+    received_set = {str(uid) for uid in received}
+
+    statuses = {}
+    for uid in user_ids:
+        uid = str(uid)
+        if uid in connected:
+            statuses[uid] = {'status': 'connected', 'conversation_id': connected[uid]}
+        elif uid in sent_set:
+            statuses[uid] = {'status': 'pending_sent', 'conversation_id': None}
+        elif uid in received_set:
+            statuses[uid] = {'status': 'pending_received', 'conversation_id': None}
+        else:
+            statuses[uid] = {'status': 'none', 'conversation_id': None}
+
+    return Response({'statuses': statuses})

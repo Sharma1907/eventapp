@@ -1,7 +1,7 @@
 {% extends "panel/base.html" %}
 {% block title %}Participants — ETD 2026{% endblock %}
 {% block page_title %}Participants{% endblock %}
-{% block page_subtitle %}{{ total }} registered participant{{ total|pluralize }}{% endblock %}
+{% block page_subtitle %}Manage registered participants{% endblock %}
 
 {% block content %}
 {% if messages %}
@@ -13,98 +13,84 @@
   {% endfor %}
 {% endif %}
 
-<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
+<!-- Stats -->
+<div class="stats-grid" style="margin-bottom:24px;">
   <div class="stat-card">
-    <div class="stat-card-header">
-      <div class="stat-icon" style="background:var(--primary-light);color:var(--primary);">
-        <i class="fas fa-users"></i>
-      </div>
-    </div>
     <div class="stat-value">{{ total }}</div>
     <div class="stat-label">Total Participants</div>
   </div>
   <div class="stat-card">
-    <div class="stat-card-header">
-      <div class="stat-icon" style="background:var(--success-light);color:var(--success);">
-        <i class="fas fa-check-circle"></i>
-      </div>
-    </div>
-    <div class="stat-value">{{ password_set }}</div>
+    <div class="stat-value" style="color:var(--success);">{{ password_set }}</div>
     <div class="stat-label">Password Changed</div>
   </div>
   <div class="stat-card">
-    <div class="stat-card-header">
-      <div class="stat-icon" style="background:var(--warning-light);color:var(--warning);">
-        <i class="fas fa-clock"></i>
-      </div>
-    </div>
-    <div class="stat-value">{{ password_pending }}</div>
+    <div class="stat-value" style="color:var(--warning);">{{ password_pending }}</div>
     <div class="stat-label">Pending First Login</div>
   </div>
 </div>
 
+<!-- Actions -->
+<div style="display:flex;gap:12px;align-items:center;margin-bottom:20px;flex-wrap:wrap;">
+  <a href="{% url 'participant_add' %}" class="btn btn-primary">
+    <i class="fas fa-user-plus"></i> Add Single
+  </a>
+  <a href="{% url 'participants_upload' %}" class="btn btn-secondary">
+    <i class="fas fa-upload"></i> Bulk Import
+  </a>
+  <form method="get" style="margin-left:auto;display:flex;gap:8px;">
+    <input type="text" name="search" value="{{ search }}" placeholder="Search name, email, reg ID…"
+           class="form-control" style="width:260px;">
+    <button type="submit" class="btn btn-secondary"><i class="fas fa-search"></i></button>
+    {% if search %}<a href="{% url 'participants_list' %}" class="btn btn-sm" style="align-self:center;">Clear</a>{% endif %}
+  </form>
+</div>
+
+<!-- Table -->
 <div class="card">
-  <div class="card-header">
-    <h3>All Participants</h3>
-    <a href="{% url 'participants_upload' %}" class="btn btn-primary btn-sm">
-      <i class="fas fa-file-import"></i> Import More
-    </a>
-  </div>
   <div class="card-body" style="padding:0;">
+    {% if participants %}
     <div style="overflow-x:auto;">
       <table class="data-table">
         <thead>
           <tr>
             <th>Name</th>
             <th>Email</th>
+            <th>Reg ID</th>
             <th>Affiliation</th>
             <th>Phone</th>
-            <th>Password</th>
-            <th>Joined</th>
-            <th style="width:90px;">Actions</th>
+            <th>Status</th>
+            <th style="width:100px;"></th>
           </tr>
         </thead>
         <tbody>
-          {% for u in participants %}
+          {% for p in participants %}
           <tr>
-            <td style="font-weight:600;">{{ u.get_full_name }}</td>
-            <td>{{ u.email }}</td>
-            <td>{{ u.affiliation|default:"—" }}</td>
-            <td>{{ u.phone|default:"—" }}</td>
+            <td style="font-weight:600;">{{ p.get_full_name }}</td>
+            <td>{{ p.email }}</td>
+            <td><code>{{ p.registration_id|default:"—" }}</code></td>
+            <td>{{ p.affiliation|default:"—" }}</td>
+            <td>{{ p.phone|default:"—" }}</td>
             <td>
-              {% if u.must_change_password %}
-                <span class="badge badge-warning">Temp</span>
+              {% if not p.is_active %}
+                <span class="badge badge-danger">Suspended</span>
+              {% elif p.must_change_password %}
+                <span class="badge badge-warning">Pending</span>
               {% else %}
-                <span class="badge badge-success">Set</span>
+                <span class="badge badge-success">Active</span>
               {% endif %}
             </td>
-            <td style="font-size:13px;color:var(--text-tertiary);">{{ u.created_at|date:"d M Y" }}</td>
             <td>
               <div style="display:flex;gap:6px;">
-                <a href="{% url 'participant_edit' u.pk %}" class="btn btn-secondary btn-sm" title="Edit" style="padding:5px 10px;">
-                  <i class="fas fa-pen-to-square"></i>
+                <a href="{% url 'participant_edit' p.pk %}" class="btn btn-sm btn-secondary" title="Edit">
+                  <i class="fas fa-pen"></i>
                 </a>
-                <form method="post" action="{% url 'participant_delete' u.pk %}" style="margin:0;">
+                <form method="post" action="{% url 'participant_delete' p.pk %}" style="margin:0;">
                   {% csrf_token %}
-                  <button type="submit" class="btn btn-sm" title="Delete"
-                          style="padding:5px 10px;background:none;border:1px solid var(--danger);color:var(--danger);border-radius:8px;cursor:pointer;"
-                          onclick="return confirm('Delete {{ u.get_full_name }}?')">
+                  <button type="submit" class="btn btn-sm btn-danger" title="Delete"
+                          onclick="return confirm('Delete {{ p.get_full_name }}?')">
                     <i class="fas fa-trash-can"></i>
                   </button>
                 </form>
-              </div>
-            </td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="7">
-              <div class="empty-state">
-                <i class="fas fa-user-plus"></i>
-                <h3>No participants yet</h3>
-                <p>Import your first batch of participants.</p>
-                <a href="{% url 'participants_upload' %}" class="btn btn-primary btn-sm">
-                  <i class="fas fa-file-import"></i> Import Participants
-                </a>
               </div>
             </td>
           </tr>
@@ -112,6 +98,17 @@
         </tbody>
       </table>
     </div>
+    {% else %}
+    <div class="empty-state">
+      <i class="fas fa-users"></i>
+      <h3>No participants{% if search %} matching "{{ search }}"{% endif %}</h3>
+      <p>{% if search %}Try a different search.{% else %}Import participants to get started.{% endif %}</p>
+      {% if not search %}<a href="{% url 'participants_upload' %}" class="btn btn-primary">Import Participants</a>{% endif %}
+    </div>
+    {% endif %}
   </div>
 </div>
+{% if search and showing != total %}
+<p style="margin-top:12px;font-size:13px;color:var(--text-tertiary);">Showing {{ showing }} of {{ total }} participants.</p>
+{% endif %}
 {% endblock %}
