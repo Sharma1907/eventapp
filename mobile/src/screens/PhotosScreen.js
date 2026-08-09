@@ -102,34 +102,57 @@ function UploadSheet({ sessions, onClose, onUploaded }) {
     }
   };
 
+  const submitRef = React.useRef(false);
+
   const submit = async () => {
     if (!image) { Alert.alert('Pick a photo first'); return; }
+    if (uploading || submitRef.current) return; // Guard double-tap
+    submitRef.current = true;
     setUploading(true);
+
     try {
       const form = new FormData();
-      form.append('image', {
-        uri: image.uri,
-        type: image.mimeType || 'image/jpeg',
-        name: image.fileName || 'photo.jpg',
-      });
+
+      if (Platform.OS === 'web' && image.file) {
+        form.append('image', image.file, image.file.name || 'photo.jpg');
+      } else {
+        form.append('image', {
+          uri: image.uri,
+          type: image.mimeType || image.type || 'image/jpeg',
+          name: image.fileName || image.name || 'photo.jpg',
+        });
+      }
+
       if (caption.trim()) form.append('caption', caption.trim());
       if (sessionId) form.append('session_id', sessionId);
 
       const res = await apiFetch('/photos/upload/', {
         method: 'POST',
         body: form,
-        headers: { 'Content-Type': 'multipart/form-data' },
       });
-      const data = await res.json();
-      if (!res.ok) { Alert.alert('Upload failed', data.error || 'Try again'); return; }
-      Alert.alert(
-        data.auto_approved ? '✅ Photo Live!' : '📤 Submitted!',
-        data.message,
-        [{ text: 'OK', onPress: () => { onClose(); onUploaded(); } }]
-      );
+
+      let data = {};
+      try { data = await res.json(); } catch {}
+
+      if (!res.ok) {
+        Alert.alert('Upload failed', data.error || 'Please select a valid image file and try again.');
+        submitRef.current = false;
+        setUploading(false);
+        return;
+      }
+
+      // Success — close modal first, then show alert
+      onClose();
+      onUploaded();
+      setTimeout(() => {
+        Alert.alert(
+          data.auto_approved ? '✅ Photo Live!' : '📤 Submitted!',
+          data.message || 'Your photo has been uploaded.'
+        );
+      }, 300);
     } catch (e) {
       Alert.alert('Error', 'Upload failed. Check your connection.');
-    } finally {
+      submitRef.current = false;
       setUploading(false);
     }
   };
@@ -202,6 +225,58 @@ function UploadSheet({ sessions, onClose, onUploaded }) {
 }
 
 /* ── Main Screen ─────────────────────────────────────────────────── */
+function PhotoThumb({ item, index, onPress, onDelete, showDelete }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1, duration: 320, delay: (index % 9) * 40,
+      easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    }).start();
+  }, []);
+
+  const approved = item.status === 'approved' || !item.status;
+  const pending = item.status === 'pending';
+  const rejected = item.status === 'rejected';
+
+  return (
+    <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) }] }}>
+      <TouchableOpacity
+        style={[ph.thumb, { opacity: (pending || rejected) ? 0.55 : 1 }]}
+        onPress={onPress}
+        activeOpacity={0.88}
+      >
+        <Image source={{ uri: fixMediaUrl(item.image_url) }} style={ph.thumbImg} resizeMode="cover" />
+        {pending && (
+          <View style={ph.thumbOverlay}>
+            <Ionicons name="time-outline" size={18} color="#fff" />
+            <Text style={ph.thumbOverlayText}>Pending</Text>
+          </View>
+        )}
+        {rejected && (
+          <View style={[ph.thumbOverlay, { backgroundColor: 'rgba(239,68,68,0.7)' }]}>
+            <Ionicons name="close-circle-outline" size={18} color="#fff" />
+            <Text style={ph.thumbOverlayText}>Rejected</Text>
+          </View>
+        )}
+        {!!item.session_title && approved && (
+          <View style={ph.thumbBadge}>
+            <Ionicons name="calendar" size={9} color="#fff" />
+          </View>
+        )}
+        {showDelete && (
+          <TouchableOpacity
+            style={ph.thumbDeleteBtn}
+            onPress={(e) => { e.stopPropagation && e.stopPropagation(); onDelete && onDelete(); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="trash" size={12} color="#fff" />
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 export default function PhotosScreen({ onBack }) {
   const [tab, setTab] = useState('wall');       // 'wall' | 'sessions' | 'mine'
   const [photos, setPhotos] = useState([]);
@@ -274,48 +349,30 @@ export default function PhotosScreen({ onBack }) {
 
   const displayPhotos = tab === 'mine' ? myPhotos : photos;
 
-  const renderPhoto = ({ item, index }) => {
-    const anim = useRef(new Animated.Value(0)).current;
-    useEffect(() => {
-      Animated.timing(anim, {
-        toValue: 1, duration: 320, delay: (index % 9) * 40,
-        easing: Easing.out(Easing.cubic), useNativeDriver: true,
-      }).start();
-    }, []);
-
-    const approved = item.status === 'approved' || !item.status;
-    const pending = item.status === 'pending';
-    const rejected = item.status === 'rejected';
-
-    return (
-      <Animated.View style={{ opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) }] }}>
-        <TouchableOpacity
-          style={[ph.thumb, { opacity: (pending || rejected) ? 0.55 : 1 }]}
-          onPress={() => approved && setLightboxPhoto(item)}
-          activeOpacity={0.88}
-        >
-          <Image source={{ uri: fixMediaUrl(item.image_url) }} style={ph.thumbImg} resizeMode="cover" />
-          {pending && (
-            <View style={ph.thumbOverlay}>
-              <Ionicons name="time-outline" size={18} color="#fff" />
-              <Text style={ph.thumbOverlayText}>Pending</Text>
-            </View>
-          )}
-          {rejected && (
-            <View style={[ph.thumbOverlay, { backgroundColor: 'rgba(239,68,68,0.7)' }]}>
-              <Ionicons name="close-circle-outline" size={18} color="#fff" />
-              <Text style={ph.thumbOverlayText}>Rejected</Text>
-            </View>
-          )}
-          {!!item.session_title && approved && (
-            <View style={ph.thumbBadge}>
-              <Ionicons name="calendar" size={9} color="#fff" />
-            </View>
-          )}
-        </TouchableOpacity>
-      </Animated.View>
-    );
+  const deleteMyPhoto = async (id) => {
+    Alert.alert('Delete Photo', 'Remove this photo?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try {
+          const res = await apiFetch(`/photos/mine/${id}/delete/`, { method: 'DELETE' });
+          if (res.ok) fetchAll();
+        } catch (e) {}
+      }},
+    ]);
   };
+
+  const renderPhoto = ({ item, index }) => (
+    <PhotoThumb
+      item={item}
+      index={index}
+      showDelete={tab === 'mine'}
+      onDelete={() => deleteMyPhoto(item.id)}
+      onPress={() => {
+        const approved = item.status === 'approved' || !item.status;
+        if (approved) setLightboxPhoto(item);
+      }}
+    />
+  );
 
   return (
     <View style={s.container}>
@@ -501,6 +558,7 @@ const ph = StyleSheet.create({
   thumbOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', gap: 3 },
   thumbOverlayText: { fontSize: 9, fontWeight: FONT.w8, color: '#fff', letterSpacing: 0.5 },
   thumbBadge: { position: 'absolute', bottom: 5, right: 5, width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.brand, alignItems: 'center', justifyContent: 'center' },
+  thumbDeleteBtn: { position: 'absolute', top: 4, right: 4, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(239,68,68,0.85)', alignItems: 'center', justifyContent: 'center' },
 });
 
 const sf = StyleSheet.create({

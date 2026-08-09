@@ -3,12 +3,11 @@
  * On 401 → refreshes JWT → retries original request once.
  * Updates stored tokens in-memory + localStorage.
  */
-import { Platform } from 'react-native';
 import { API_URL, API_HEADERS } from './theme';
 
 let _tokens = null;
-let _onTokensUpdated = null; // callback to persist new tokens
-let _refreshPromise = null;  // dedup concurrent refreshes
+let _onTokensUpdated = null;
+let _refreshPromise = null;
 
 export function setTokens(tokens, onUpdated) {
   _tokens = tokens;
@@ -26,8 +25,6 @@ export function authHeaders() {
 
 async function _refreshTokens() {
   if (!_tokens?.refresh) return false;
-
-  // Dedup: if already refreshing, wait for that promise
   if (_refreshPromise) return _refreshPromise;
 
   _refreshPromise = (async () => {
@@ -42,7 +39,6 @@ async function _refreshTokens() {
       if (data.access) {
         _tokens = { ..._tokens, access: data.access };
         if (data.refresh) _tokens.refresh = data.refresh;
-        // Persist
         if (_onTokensUpdated) _onTokensUpdated(_tokens);
         return true;
       }
@@ -60,11 +56,32 @@ async function _refreshTokens() {
 /**
  * Drop-in fetch replacement with auto token refresh.
  * Usage: apiFetch('/notifications/my/')
- *        apiFetch('/auth/update-profile/', { method: 'POST', body: ... })
+ *        apiFetch('/auth/update-profile/', { method: 'POST', body: JSON.stringify({...}) })
+ *        apiFetch('/photos/upload/', { method: 'POST', body: formData }) // FormData auto-handled
  */
 export async function apiFetch(path, options = {}) {
   const url = path.startsWith('http') ? path : `${API_URL}${path}`;
-  const headers = { ...authHeaders(), ...(options.headers || {}) };
+
+  // Build headers: auth + user-provided, but skip Content-Type for FormData
+  const isFormData = options.body instanceof FormData;
+  const baseHeaders = _tokens?.access
+    ? { Authorization: `Bearer ${_tokens.access}` }
+    : {};
+
+  // Only add Content-Type: application/json if NOT FormData and not already set
+  if (!isFormData && !options.headers?.['Content-Type']) {
+    baseHeaders['Content-Type'] = 'application/json';
+  }
+
+  // Add ngrok header
+  baseHeaders['ngrok-skip-browser-warning'] = 'true';
+
+  const headers = { ...baseHeaders, ...(options.headers || {}) };
+
+  // Remove Content-Type if FormData (let browser set boundary)
+  if (isFormData) {
+    delete headers['Content-Type'];
+  }
 
   let res = await fetch(url, { ...options, headers });
 
@@ -72,8 +89,8 @@ export async function apiFetch(path, options = {}) {
   if (res.status === 401 && _tokens?.refresh) {
     const refreshed = await _refreshTokens();
     if (refreshed) {
-      // Retry with new token
-      const retryHeaders = { ...authHeaders(), ...(options.headers || {}) };
+      const retryHeaders = { ...headers, Authorization: `Bearer ${_tokens.access}` };
+      if (isFormData) delete retryHeaders['Content-Type'];
       res = await fetch(url, { ...options, headers: retryHeaders });
     }
   }

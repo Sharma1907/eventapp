@@ -13,6 +13,7 @@ import AddParticipantScreen from './AddParticipantScreen';
 import CheckInScreen        from './CheckInScreen';
 import ScheduleAdmin        from './ScheduleAdmin';
 import LeaderboardAdmin     from '../LeaderboardScreen';
+import PhotosAdmin          from './PhotosAdmin';
 
 const CARD_SIZE = (Dimensions.get('window').width - SPACE.xl * 2 - SPACE.md) / 2;
 
@@ -59,6 +60,13 @@ const FEATURES = [
     sub:  'View rankings & points',
     grad: ['#d97706', '#b45309'],
   },
+  {
+    key:  'photos',
+    icon: 'camera',
+    label:'Photos',
+    sub:  'Moderate uploads & wall',
+    grad: ['#059669', '#047857'],
+  },
 ];
 
 function FeatureCube({ feat, onPress }) {
@@ -97,9 +105,9 @@ export default function AdminTab({ user, tokens, onLogout }) {
   if (screen === 'schedule')        return <ScheduleAdmin        tokens={tokens} onBack={() => setScreen(null)} />;
 
   
-  if (screen === 'leaderboard') {
-    return <LeaderboardAdmin onBack={() => setScreen(null)} />;
-  }return (
+  if (screen === 'leaderboard') return <LeaderboardAdmin onBack={() => setScreen(null)} />;
+  if (screen === 'photos') return <PhotosAdmin onBack={() => setScreen(null)} />;
+return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <LinearGradient colors={[COLORS.brandDeep, COLORS.brand]} style={a.hero}>
         <View style={a.blob} />

@@ -1,48 +1,73 @@
 {% extends "panel/base.html" %}
 {% block title %}Photo Moderation{% endblock %}
 {% block content %}
-<div style="max-width:1200px;margin:0 auto">
+<style>
+  .photo-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+  .photo-tab {
+    padding: 10px 18px; border-radius: 12px; text-decoration: none;
+    font-weight: 700; font-size: 13px; transition: all 0.2s;
+  }
+  .photo-tab--active { background: var(--brand); color: #fff !important; }
+  .photo-tab--inactive { background: var(--bg-sec); color: var(--text-sec); }
+  .photo-tab--inactive:hover { background: #e2e8f0; }
+  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .photo-card { background: #fff; border-radius: 18px; border: 1px solid var(--border); overflow: hidden; }
+  .photo-card__img-wrap { position: relative; cursor: pointer; }
+  .photo-card__img { width: 100%; height: 200px; object-fit: cover; display: block; }
+  .photo-card__status {
+    position: absolute; top: 8px; right: 8px; font-size: 10px; font-weight: 700;
+    padding: 4px 8px; border-radius: 8px; color: #fff;
+  }
+  .photo-card__body { padding: 14px; }
+  .photo-card__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .photo-card__actions form { flex: 1; }
+  .photo-card__btn {
+    width: 100%; padding: 8px; border: none; border-radius: 10px;
+    font-weight: 700; cursor: pointer; font-size: 12px; color: #fff;
+  }
+  /* Lightbox */
+  .lb-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85); z-index: 9999;
+    align-items: center; justify-content: center;
+  }
+  .lb-overlay.active { display: flex; }
+  .lb-img { max-width: 90vw; max-height: 85vh; border-radius: 16px; object-fit: contain; }
+  .lb-close {
+    position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.15);
+    border: none; color: #fff; font-size: 28px; width: 44px; height: 44px;
+    border-radius: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .lb-meta {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 12px;
+    color: #fff; font-size: 13px; text-align: center; max-width: 80vw;
+  }
+</style>
 
+<div style="max-width:1200px;margin:0 auto">
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:16px">
     <div>
       <h1 style="font-size:28px;font-weight:800;color:var(--text);margin:0">Photo Wall</h1>
-      <p style="color:var(--text-sec);margin:6px 0 0;font-size:14px">Moderate uploads. Only checked-in participants can upload and view approved photos.</p>
+      <p style="color:var(--text-sec);margin:6px 0 0;font-size:14px">Moderate uploads. Only checked-in participants can upload and view.</p>
     </div>
-
     <div style="display:flex;gap:12px;flex-wrap:wrap">
-
-      <form method="post">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="toggle_window">
-        <button type="submit" style="
-          padding:12px 22px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:14px;
-          background:{% if cfg.upload_open %}#ef4444{% else %}#10b981{% endif %};color:#fff">
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="toggle_window"><input type="hidden" name="tab" value="{{ tab }}">
+        <button type="submit" style="padding:12px 22px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:14px;background:{% if cfg.upload_open %}#ef4444{% else %}#10b981{% endif %};color:#fff">
           {% if cfg.upload_open %}🔒 Close Uploads{% else %}🔓 Open Uploads{% endif %}
         </button>
       </form>
-
-      <form method="post">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="toggle_auto">
-        <button type="submit" style="
-          padding:12px 22px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:14px;
-          background:{% if cfg.auto_approve %}#f59e0b{% else %}var(--bg-sec){% endif %};
-          color:{% if cfg.auto_approve %}#fff{% else %}var(--text){% endif %};
-          border:1px solid var(--border)">
-          ⚡ Auto-approve: {% if cfg.auto_approve %}ON{% else %}OFF{% endif %}
+      <form method="post">{% csrf_token %}<input type="hidden" name="action" value="toggle_auto"><input type="hidden" name="tab" value="{{ tab }}">
+        <button type="submit" style="padding:12px 22px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:14px;background:{% if cfg.auto_approve %}#f59e0b{% else %}var(--bg-sec){% endif %};color:{% if cfg.auto_approve %}#fff{% else %}var(--text){% endif %};border:1px solid var(--border)">
+          ⚡ Auto: {% if cfg.auto_approve %}ON{% else %}OFF{% endif %}
         </button>
       </form>
-
-      {% if counts.pending > 0 %}
-      <form method="post" onsubmit="return confirm('Approve all {{ counts.pending }} pending photos?')">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="approve_all">
-        <button type="submit" style="padding:12px 22px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:14px;background:var(--brand);color:#fff">
-          ✓ Approve All ({{ counts.pending }})
-        </button>
+      {% if pending_count > 0 %}
+      <form method="post" onsubmit="return confirm('Approve all {{ pending_count }} pending?')">{% csrf_token %}
+        <input type="hidden" name="action" value="approve_all"><input type="hidden" name="tab" value="{{ tab }}">
+        <button type="submit" style="padding:12px 22px;border:none;border-radius:14px;cursor:pointer;font-weight:700;font-size:14px;background:var(--brand);color:#fff">✓ Approve All ({{ pending_count }})</button>
       </form>
       {% endif %}
-
     </div>
   </div>
 
@@ -50,7 +75,7 @@
     <div style="background:{% if cfg.upload_open %}#d1fae5{% else %}#fee2e2{% endif %};padding:12px 18px;border-radius:12px;display:flex;align-items:center;gap:8px">
       <span style="font-size:18px">{% if cfg.upload_open %}🟢{% else %}🔴{% endif %}</span>
       <div>
-        <div style="font-size:11px;font-weight:700;color:{% if cfg.upload_open %}#065f46{% else %}#991b1b{% endif %};letter-spacing:0.6px">UPLOAD WINDOW</div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.6px;color:{% if cfg.upload_open %}#065f46{% else %}#991b1b{% endif %}">UPLOAD WINDOW</div>
         <div style="font-size:13px;font-weight:600;color:{% if cfg.upload_open %}#047857{% else %}#b91c1c{% endif %}">{% if cfg.upload_open %}Open{% else %}Closed{% endif %}</div>
       </div>
     </div>
@@ -58,81 +83,57 @@
       <span style="font-size:18px">{% if cfg.auto_approve %}⚡{% else %}🔎{% endif %}</span>
       <div>
         <div style="font-size:11px;font-weight:700;color:var(--text-sec);letter-spacing:0.6px">AUTO-APPROVE</div>
-        <div style="font-size:13px;font-weight:600;color:var(--text)">{% if cfg.auto_approve %}On — photos go live instantly{% else %}Off — manual review required{% endif %}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text)">{% if cfg.auto_approve %}On{% else %}Off{% endif %}</div>
       </div>
     </div>
   </div>
 
-  <div style="display:flex;gap:4px;margin-bottom:20px">
-    {% for t, label in tabs %}
-    <a href="?tab={{ t }}" style="
-      padding:10px 18px;border-radius:12px;text-decoration:none;font-weight:700;font-size:13px;
-      background:{% if tab == t %}var(--brand){% else %}var(--bg-sec){% endif %};
-      color:{% if tab == t %}#fff{% else %}var(--text-sec){% endif %}">
-      {{ label }} ({{ counts|get_item:t }})
-    </a>
-    {% endfor %}
+  <div class="photo-tabs">
+    <a href="?tab=pending" class="photo-tab {% if tab == 'pending' %}photo-tab--active{% else %}photo-tab--inactive{% endif %}">Pending ({{ pending_count }})</a>
+    <a href="?tab=approved" class="photo-tab {% if tab == 'approved' %}photo-tab--active{% else %}photo-tab--inactive{% endif %}">Approved ({{ approved_count }})</a>
+    <a href="?tab=rejected" class="photo-tab {% if tab == 'rejected' %}photo-tab--active{% else %}photo-tab--inactive{% endif %}">Rejected ({{ rejected_count }})</a>
   </div>
 
   {% if photos %}
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
+  <div class="photo-grid">
     {% for photo in photos %}
-    <div style="background:#fff;border-radius:18px;border:1px solid var(--border);overflow:hidden">
-      <div style="position:relative">
-        <img src="{{ photo.image.url }}" alt="" style="width:100%;height:200px;object-fit:cover;display:block">
-        {% if tab == 'pending' %}
-        <div style="position:absolute;top:8px;right:8px;background:#f59e0b;color:#fff;font-size:10px;font-weight:700;padding:4px 8px;border-radius:8px">PENDING</div>
-        {% elif tab == 'approved' %}
-        <div style="position:absolute;top:8px;right:8px;background:#10b981;color:#fff;font-size:10px;font-weight:700;padding:4px 8px;border-radius:8px">APPROVED</div>
+    <div class="photo-card">
+      <div class="photo-card__img-wrap" onclick="openLightbox('{{ photo.image.url }}','{{ photo.uploader.get_full_name|default:photo.uploader.email }}','{{ photo.caption|escapejs }}')">
+        <img src="{{ photo.image.url }}" alt="" class="photo-card__img" loading="lazy">
+        {% if photo.status == 'pending' %}
+          <div class="photo-card__status" style="background:#f59e0b">PENDING</div>
+        {% elif photo.status == 'approved' %}
+          <div class="photo-card__status" style="background:#10b981">APPROVED</div>
         {% else %}
-        <div style="position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;font-size:10px;font-weight:700;padding:4px 8px;border-radius:8px">REJECTED</div>
+          <div class="photo-card__status" style="background:#ef4444">REJECTED</div>
         {% endif %}
       </div>
-
-      <div style="padding:14px">
+      <div class="photo-card__body">
         <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px">{{ photo.uploader.get_full_name|default:photo.uploader.email }}</div>
         <div style="font-size:11px;color:var(--text-sec);margin-bottom:6px">{{ photo.uploader.email }}</div>
         {% if photo.session %}
-        <div style="font-size:11px;background:var(--brand-light);color:var(--brand);padding:4px 8px;border-radius:8px;display:inline-block;margin-bottom:6px">📍 {{ photo.session.title }}</div>
+          <div style="font-size:11px;background:var(--brand-light);color:var(--brand);padding:4px 8px;border-radius:8px;display:inline-block;margin-bottom:6px">📍 {{ photo.session.title }}</div>
         {% else %}
-        <div style="font-size:11px;background:#f1f5f9;color:var(--text-sec);padding:4px 8px;border-radius:8px;display:inline-block;margin-bottom:6px">🌐 General Wall</div>
+          <div style="font-size:11px;background:#f1f5f9;color:var(--text-sec);padding:4px 8px;border-radius:8px;display:inline-block;margin-bottom:6px">🌐 General Wall</div>
         {% endif %}
-        {% if photo.caption %}
-        <p style="font-size:12px;color:var(--text-sec);margin:4px 0 8px;line-height:1.5">{{ photo.caption }}</p>
-        {% endif %}
-        {% if photo.rejected_reason %}
-        <p style="font-size:11px;color:#ef4444;margin:4px 0 8px">Reason: {{ photo.rejected_reason }}</p>
-        {% endif %}
+        {% if photo.caption %}<p style="font-size:12px;color:var(--text-sec);margin:4px 0 8px;line-height:1.5">{{ photo.caption }}</p>{% endif %}
+        {% if photo.rejected_reason %}<p style="font-size:11px;color:#ef4444;margin:4px 0 8px">Reason: {{ photo.rejected_reason }}</p>{% endif %}
         <div style="font-size:11px;color:var(--text-sec);margin-bottom:12px">{{ photo.created_at|timesince }} ago</div>
-
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          {% if tab == 'pending' or tab == 'rejected' %}
-          <form method="post" style="flex:1">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="approve">
-            <input type="hidden" name="pk" value="{{ photo.pk }}">
-            <button type="submit" style="width:100%;padding:8px;background:#10b981;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:12px">✓ Approve</button>
+        <div class="photo-card__actions">
+          {% if photo.status == 'pending' or photo.status == 'rejected' %}
+          <form method="post">{% csrf_token %}<input type="hidden" name="action" value="approve"><input type="hidden" name="pk" value="{{ photo.pk }}"><input type="hidden" name="tab" value="{{ tab }}">
+            <button type="submit" class="photo-card__btn" style="background:#10b981">✓ Approve</button>
           </form>
           {% endif %}
-
-          {% if tab == 'pending' or tab == 'approved' %}
-          <form method="post" style="flex:1" onsubmit="
-            var r=prompt('Reason for rejection (optional):','');
-            if(r===null)return false;
-            this.querySelector('[name=reason]').value=r;return true;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="reject">
-            <input type="hidden" name="pk" value="{{ photo.pk }}">
-            <input type="hidden" name="reason" value="">
-            <button type="submit" style="width:100%;padding:8px;background:#ef4444;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:12px">✗ Reject</button>
+          {% if photo.status == 'pending' or photo.status == 'approved' %}
+          <form method="post" onsubmit="var r=prompt('Reason (optional):','');if(r===null)return false;this.querySelector('[name=reason]').value=r;return true;">{% csrf_token %}
+            <input type="hidden" name="action" value="reject"><input type="hidden" name="pk" value="{{ photo.pk }}"><input type="hidden" name="reason" value=""><input type="hidden" name="tab" value="{{ tab }}">
+            <button type="submit" class="photo-card__btn" style="background:#ef4444">✗ Reject</button>
           </form>
           {% endif %}
-
-          <form method="post" onsubmit="return confirm('Delete this photo permanently?')">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="delete">
-            <input type="hidden" name="pk" value="{{ photo.pk }}">
-            <button type="submit" style="padding:8px 12px;background:var(--bg-sec);color:var(--text-sec);border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:12px">🗑</button>
+          <form method="post" onsubmit="return confirm('Delete permanently?')" style="flex:0">{% csrf_token %}
+            <input type="hidden" name="action" value="delete"><input type="hidden" name="pk" value="{{ photo.pk }}"><input type="hidden" name="tab" value="{{ tab }}">
+            <button type="submit" class="photo-card__btn" style="background:#e2e8f0;color:var(--text-sec);width:auto;padding:8px 12px">🗑</button>
           </form>
         </div>
       </div>
@@ -144,10 +145,31 @@
     <div style="font-size:40px;margin-bottom:12px">📷</div>
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px">No {{ tab }} photos</div>
     <div style="font-size:13px;color:var(--text-sec)">
-      {% if tab == 'pending' %}No photos waiting for review.{% elif tab == 'approved' %}No approved photos yet.{% else %}No rejected photos.{% endif %}
+      {% if tab == 'pending' %}Queue is clear!{% elif tab == 'approved' %}No approved photos yet.{% else %}No rejected photos.{% endif %}
     </div>
   </div>
   {% endif %}
-
 </div>
+
+<!-- Lightbox -->
+<div class="lb-overlay" id="lightbox" onclick="closeLightbox()">
+  <button class="lb-close" onclick="closeLightbox()">&times;</button>
+  <img id="lb-img" class="lb-img" src="" alt="" onclick="event.stopPropagation()">
+  <div class="lb-meta" id="lb-meta" onclick="event.stopPropagation()"></div>
+</div>
+
+<script>
+function openLightbox(url, uploader, caption) {
+  document.getElementById('lb-img').src = url;
+  var meta = uploader;
+  if (caption) meta += ' — ' + caption;
+  document.getElementById('lb-meta').textContent = meta;
+  document.getElementById('lightbox').classList.add('active');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+  document.getElementById('lb-img').src = '';
+}
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeLightbox(); });
+</script>
 {% endblock %}

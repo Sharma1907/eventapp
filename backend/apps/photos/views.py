@@ -68,13 +68,19 @@ def upload(request):
     if not settings.upload_open:
         return Response({'error': 'Photo uploads are currently closed'}, status=403)
 
+    # ponytail: temporary upload debug for web/native form-data mismatch; remove once verified.
+    # print('FILES:', list(request.FILES.keys()), 'DATA:', list(request.data.keys()))
     image = request.FILES.get('image')
     if not image:
-        return Response({'error': 'No image provided'}, status=400)
+        return Response({'error': 'No image file received. Please pick an image and try again.'}, status=400)
+
+    content_type = getattr(image, 'content_type', '') or ''
+    if content_type and not content_type.startswith('image/'):
+        return Response({'error': 'Only image files are allowed.'}, status=400)
 
     # 10 MB cap
     if image.size > 10 * 1024 * 1024:
-        return Response({'error': 'Image must be under 10 MB'}, status=400)
+        return Response({'error': 'Image must be under 10 MB.'}, status=400)
 
     session = None
     session_id = request.data.get('session_id')
@@ -146,6 +152,19 @@ def sessions_with_photos(request):
     })
 
 
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_my_photo(request, pk):
+    """DELETE /api/v1/photos/mine/<pk>/delete/ — user deletes own upload."""
+    try:
+        photo = Photo.objects.get(pk=pk, uploader=request.user)
+    except Photo.DoesNotExist:
+        return Response({'error': 'Photo not found or not yours'}, status=404)
+    photo.delete()
+    return Response({'success': True})
+
+
 # ── Admin API ──────────────────────────────────────────────────────
 
 def _is_admin(user):
@@ -185,6 +204,11 @@ def admin_queue(request):
 
     status_filter = request.query_params.get('status', 'pending')
     qs = Photo.objects.filter(status=status_filter).select_related('uploader', 'session')
+    session_filter = request.query_params.get('session')
+    if session_filter == 'wall':
+        qs = qs.filter(session__isnull=True)
+    elif session_filter:
+        qs = qs.filter(session_id=session_filter)
 
     return Response({
         'photos': [
@@ -261,3 +285,47 @@ def admin_delete(request, pk):
     except Photo.DoesNotExist:
         return Response({'error': 'Not found'}, status=404)
     return Response({'success': True})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_stats(request):
+    """GET /api/v1/photos/admin/stats/ — counts by status + session breakdown."""
+    if not _is_admin(request.user):
+        return Response({'error': 'Forbidden'}, status=403)
+
+    from django.db.models import Count, Q
+
+    total = Photo.objects.count()
+    pending = Photo.objects.filter(status='pending').count()
+    approved = Photo.objects.filter(status='approved').count()
+    rejected = Photo.objects.filter(status='rejected').count()
+    wall_count = Photo.objects.filter(session__isnull=True).count()
+
+    sessions = ScheduleSession.objects.filter(
+        photos__isnull=False, is_published=True,
+    ).annotate(
+        total_photos=Count('photos'),
+        pending_photos=Count('photos', filter=Q(photos__status='pending')),
+        approved_photos=Count('photos', filter=Q(photos__status='approved')),
+    ).order_by('day', 'start_datetime').distinct()
+
+    return Response({
+        'total': total,
+        'pending': pending,
+        'approved': approved,
+        'rejected': rejected,
+        'wall_count': wall_count,
+        'sessions': [
+            {
+                'id': str(s.id),
+                'title': s.title,
+                'day': s.day,
+                'session_type': s.session_type,
+                'total_photos': s.total_photos,
+                'pending_photos': s.pending_photos,
+                'approved_photos': s.approved_photos,
+            }
+            for s in sessions
+        ],
+    })
